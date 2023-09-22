@@ -5,7 +5,7 @@ import random
 WINDOW_SIZE = 775
 SQUARE_SIDE = 700
 NUM_POINTS = 50
-CIRCLE_RADIUS = 20
+CIRCLE_RADIUS = 5
 
 
 def draw_random_points(canvas, square_side=SQUARE_SIDE, num_points=NUM_POINTS, circle_radius=CIRCLE_RADIUS):
@@ -13,9 +13,7 @@ def draw_random_points(canvas, square_side=SQUARE_SIDE, num_points=NUM_POINTS, c
         x = random.randint(10 + circle_radius, 10 + square_side - circle_radius)
         y = random.randint(10 + circle_radius, 10 + square_side - circle_radius)
 
-        # Drawing a point
-        canvas.create_oval(x, y, x + 2, y + 2, fill='black')
-
+        canvas.create_oval(x, y, x + 2, y + 2, fill='black')            # Drawing a point
         # Drawing a circle around a point
         canvas.create_oval(x - circle_radius, y - circle_radius, x + circle_radius, y + circle_radius, outline='black')
 
