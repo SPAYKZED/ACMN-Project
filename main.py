@@ -1,5 +1,6 @@
 import tkinter as tk
 import random
+import tkinter.messagebox
 
 # Initial parameters
 WINDOW_SIZE = 1050
@@ -8,33 +9,60 @@ RECT_HEIGHT = 775
 NUM_POINTS = 50
 CIRCLE_RADIUS = 30
 
-
+# Initialize the main window
 root = tk.Tk()
 root.title("Random Points in Rectangle")
 root.geometry(f"{WINDOW_SIZE}x{WINDOW_SIZE}")
 
+# Create a canvas to draw on
 canvas = tk.Canvas(root, bg='white', width=795, height=800)
 canvas.grid(row=0, column=0, rowspan=22)
 
-IS_SQUARE = tk.BooleanVar(value=False)
+IS_SQUARE = tk.BooleanVar(value=False)      # Variable to track if user wants a square or rectangle
+
+# Check if a new circle overlaps with existing circles
+def is_overlapping(x, y, existing_points, circle_radius):
+    for ex, ey in existing_points:
+        if ((x - ex) ** 2 + (y - ey) ** 2) ** 0.5 < 2 * circle_radius:    #The Euclidean distance formula
+            return True
+    return False
+
+
+# Function to draw random points inside a rectangle
 def draw_random_points():
     canvas.delete("all")
 
-    rect_width = min(int(rect_width_var.get()), 800)
+    # Get the entered values from user
+    rect_width = min(int(rect_width_var.get()), 780)
     if IS_SQUARE.get():
         rect_height = rect_width
     else:
-        rect_height = min(int(rect_height_var.get()), 800)
+        rect_height = min(int(rect_height_var.get()), 780)
     num_points = int(num_points_var.get())
     circle_radius = int(circle_radius_var.get())
 
-    for _ in range(num_points):
-        x = random.randint(10 + circle_radius, 10 + rect_width - circle_radius)
-        y = random.randint(10 + circle_radius, 10 + rect_height - circle_radius)
-        canvas.create_oval(x, y, x + 2, y + 2, fill='black')
-        canvas.create_oval(x - circle_radius, y - circle_radius, x + circle_radius, y + circle_radius, outline='black',
-                           width=2)
+    existing_points = []  # List to store centers of drawn circles
 
+    # Draw circles
+    for _ in range(num_points):
+        tries = 0
+        while tries < 5000:  # maximum number of attempts
+            x = random.randint(10 + circle_radius, 10 + rect_width - circle_radius)
+            y = random.randint(10 + circle_radius, 10 + rect_height - circle_radius)
+            if not is_overlapping(x, y, existing_points, circle_radius):
+                existing_points.append((x, y))
+                break
+            tries += 1
+        else:  # If the maximum number of attempts has been reached
+            tk.messagebox.showerror("Error",
+                                    "Can't draw the required number of circles without overlapping. Try reducing the number of circles or their size.")
+            return
+
+        # Draw the circle and its center point
+        canvas.create_oval(x, y, x + 2, y + 2, fill='black')
+        canvas.create_oval(x - circle_radius, y - circle_radius, x + circle_radius, y + circle_radius, outline='black', width=2)
+
+    # Draw the rectangle
     canvas.create_rectangle(10, 10, 10 + rect_width, 10 + rect_height, width=2)
 
 
@@ -70,10 +98,10 @@ def toggle_square_mode(*args):
         rect_height_entry.config(state=tk.NORMAL)
 
 
-IS_SQUARE.trace_add("write", toggle_square_mode)
+IS_SQUARE.trace_add("write", toggle_square_mode)   # Call the function whenever IS_SQUARE value changes
 
 # Button to refresh the drawing
-tk.Button(root, text="Apply", command=draw_random_points).grid(row=5, column=1, columnspan=2, pady=20)
+tk.Button(root, text="\n          Apply          \n", command=draw_random_points).grid(row=5, column=1, columnspan=2, pady=20)
 
 # Initial drawing
 draw_random_points()
