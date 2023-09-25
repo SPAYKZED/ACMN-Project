@@ -4,8 +4,7 @@ import tkinter.messagebox
 
 # Initial parameters
 WINDOW_SIZE = 1050
-RECT_WIDTH = 775
-RECT_HEIGHT = 775
+SQUARE_SIZE = 775
 NUM_POINTS = 50
 CIRCLE_RADIUS = 30
 
@@ -18,12 +17,10 @@ root.geometry(f"{WINDOW_SIZE}x{WINDOW_SIZE}")
 canvas = tk.Canvas(root, bg='white', width=795, height=800)
 canvas.grid(row=0, column=0, rowspan=22)
 
-IS_SQUARE = tk.BooleanVar(value=False)      # Variable to track if user wants a square or rectangle
-
 # Check if a new circle overlaps with existing circles
 def is_overlapping(x, y, existing_points, circle_radius):
     for ex, ey in existing_points:
-        if ((x - ex) ** 2 + (y - ey) ** 2) ** 0.5 < 2 * circle_radius:    #The Euclidean distance formula
+        if ((x - ex) ** 2 + (y - ey) ** 2) ** 0.5 < 1.7 * circle_radius:    #The Euclidean distance formula
             return True
     return False
 
@@ -33,11 +30,7 @@ def draw_random_points():
     canvas.delete("all")
 
     # Get the entered values from user
-    rect_width = min(int(rect_width_var.get()), 780)
-    if IS_SQUARE.get():
-        rect_height = rect_width
-    else:
-        rect_height = min(int(rect_height_var.get()), 780)
+    square_size = min(int(square_size_var.get()), 780)
     num_points = int(num_points_var.get())
     circle_radius = int(circle_radius_var.get())
 
@@ -47,8 +40,8 @@ def draw_random_points():
     for _ in range(num_points):
         tries = 0
         while tries < 5000:  # maximum number of attempts
-            x = random.randint(10 + circle_radius, 10 + rect_width - circle_radius)
-            y = random.randint(10 + circle_radius, 10 + rect_height - circle_radius)
+            x = random.randint(10 + circle_radius, 10 + square_size - circle_radius)
+            y = random.randint(10 + circle_radius, 10 + square_size - circle_radius)
             if not is_overlapping(x, y, existing_points, circle_radius):
                 existing_points.append((x, y))
                 break
@@ -63,35 +56,24 @@ def draw_random_points():
         canvas.create_oval(x - circle_radius, y - circle_radius, x + circle_radius, y + circle_radius, outline='black', width=2)
 
     # Draw the rectangle
-    canvas.create_rectangle(10, 10, 10 + rect_width, 10 + rect_height, width=2)
+    canvas.create_rectangle(10, 10, 10 + square_size, 10 + square_size, width=2)
 
 
 # Variables to store the entered values
-rect_width_var = tk.StringVar(value=RECT_WIDTH)
-rect_height_var = tk.StringVar(value=RECT_HEIGHT)
+square_size_var = tk.StringVar(value=SQUARE_SIZE)
 num_points_var = tk.StringVar(value=NUM_POINTS)
 circle_radius_var = tk.StringVar(value=CIRCLE_RADIUS)
+
 # Creating widgets for data input
-tk.Label(root, text="RECT WIDTH:").grid(row=0, column=1, sticky="e", padx=5, pady=5)
-tk.Entry(root, textvariable=rect_width_var).grid(row=0, column=2, padx=5, pady=5)
-# Checkbox to choose between rectangle and square
-tk.Checkbutton(root, text="Make it a square", variable=IS_SQUARE).grid(row=1, column=2, padx=5, pady=5, sticky="w")
-tk.Label(root, text="RECT HEIGHT:").grid(row=2, column=1, sticky="e", padx=5, pady=5)
-rect_height_entry = tk.Entry(root, textvariable=rect_height_var)
-rect_height_entry.grid(row=2, column=2, padx=5, pady=5)
-tk.Label(root, text="NUM POINTS:").grid(row=3, column=1, sticky="e", padx=5, pady=5)
-tk.Entry(root, textvariable=num_points_var).grid(row=3, column=2, padx=5, pady=5)
-tk.Label(root, text="CIRCLE RADIUS:").grid(row=4, column=1, sticky="e", padx=5, pady=5)
-tk.Entry(root, textvariable=circle_radius_var).grid(row=4, column=2, padx=5, pady=5)
-# Function to enable/disable the height input field based on the checkbox status
-def toggle_square_mode(*args):
-    if IS_SQUARE.get():
-        rect_height_entry.config(state=tk.DISABLED)
-    else:
-        rect_height_entry.config(state=tk.NORMAL)
+tk.Label(root, text="SQUARE SIZE:").grid(row=0, column=1, sticky="e", padx=5, pady=5)
+tk.Entry(root, textvariable=square_size_var).grid(row=0, column=2, padx=5, pady=5)
 
+tk.Label(root, text="NUM POINTS:").grid(row=1, column=1, sticky="e", padx=5, pady=5)
+tk.Entry(root, textvariable=num_points_var).grid(row=1, column=2, padx=5, pady=5)
 
-IS_SQUARE.trace_add("write", toggle_square_mode)   # Call the function whenever IS_SQUARE value changes
+tk.Label(root, text="CIRCLE RADIUS:").grid(row=2, column=1, sticky="e", padx=5, pady=5)
+tk.Entry(root, textvariable=circle_radius_var).grid(row=2, column=2, padx=5, pady=5)
+
 
 # Button to refresh the drawing
 tk.Button(root, text="\n          Apply          \n", command=draw_random_points).grid(row=5, column=1, columnspan=2, pady=20)
