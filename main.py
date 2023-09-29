@@ -2,6 +2,7 @@ import tkinter as tk
 import random
 import tkinter.messagebox
 import math
+from PIL import Image, ImageTk
 
 # Initial parameters
 WINDOW_SIZE = 1075
@@ -13,7 +14,15 @@ root = tk.Tk()
 root.title("Mobile Network Base Stations")
 root.geometry(f"{WINDOW_SIZE}x{WINDOW_SIZE}")
 
-canvas = tk.Canvas(root, bg='white', width=795, height=800)
+canvas = tk.Canvas(root, bg='white', width=795, height=795)
+img = Image.open("C:\\Python\\Project_ACMN\\map_bg.png").resize((SQUARE_SIZE, SQUARE_SIZE))
+img_tk = ImageTk.PhotoImage(img)
+ph_station = tk.PhotoImage(file='station.png')
+root.iconphoto(False,ph_station)
+city_icon = Image.open("C:\\Python\\Project_ACMN\\city.png").resize((50, 50))
+city_icon_tk = ImageTk.PhotoImage(city_icon)
+
+
 canvas.grid(row=0, column=0, rowspan=22)
 city_centers = []
 
@@ -37,8 +46,9 @@ def draw_random_points():
 
     canvas.delete("base_station")
     # Drawing the square on the canvas
-    square_size = min(int(square_size_var.get()), 780)
-    canvas.create_rectangle(10, 10, 10 + square_size, 10 + square_size, fill='white', width=2)
+    canvas.create_rectangle(10, 10, 10 + SQUARE_SIZE, 10 + SQUARE_SIZE, fill='white', width=2)
+    canvas.create_image(10, 10, anchor=tk.NW, image=img_tk, tags="background")
+
     # Gathering and preparing city parameters
     min_cities = int(min_cities_var.get())
     max_cities = int(max_cities_var.get())
@@ -57,8 +67,8 @@ def draw_random_points():
             city_radius = random.randint(min_city_radius, max_city_radius)
             # Finding a position for the city such that it doesn't overlap with other cities
             while tries < 1000:
-                x = random.randint(10 + city_radius, 10 + square_size - city_radius)
-                y = random.randint(10 + city_radius, 10 + square_size - city_radius)
+                x = random.randint(10 + city_radius, 10 + SQUARE_SIZE - city_radius)
+                y = random.randint(10 + city_radius, 10 + SQUARE_SIZE - city_radius)
                 if not are_points_within_range(x, y, city_centers, 2 * city_radius):
                     city_centers.append((x, y, city_radius))
                     break
@@ -70,9 +80,8 @@ def draw_random_points():
         # Drawing the city centers and borders on the canvas
         for i, (cx, cy, cradius) in enumerate(city_centers):
             canvas.create_text(cx, cy - 18, text=chr(65 + i), font=("Arial", 14, "bold"), fill='red')
-            canvas.create_line(cx - 10, cy, cx + 10, cy, fill='black')
-            canvas.create_line(cx, cy - 10, cx, cy + 10, fill='black')
-            canvas.create_oval(cx - cradius, cy - cradius, cx + cradius, cy + cradius, outline='red', width=1.5, tags="city")
+            canvas.create_image(cx, cy, image=city_icon_tk, tags="city")
+            canvas.create_oval(cx - cradius, cy - cradius, cx + cradius, cy + cradius, outline='red', width=3, tags="city")
 
     existing_points = []    # List to store the locations of base stations to prevent overlap
     num_points = int(num_points_var.get())      # Retrieve settings from the UI
@@ -100,7 +109,7 @@ def draw_random_points():
                 y = cy + distance_from_center * math.sin(angle)
 
                 # Ensure this base station doesn't overlap with other base stations
-                if not are_points_within_range(x, y, existing_points, 0, 1.5 * circle_radius):
+                if not are_points_within_range(x, y, existing_points, 0, 1.4 * circle_radius):
                     existing_points.append((x, y))
                     break
                 tries += 1
@@ -110,8 +119,8 @@ def draw_random_points():
         tries = 0
         while tries < 1000:
             # Randomly choose a position for the base station
-            x = random.randint(10 + circle_radius, 10 + square_size - circle_radius)
-            y = random.randint(10 + circle_radius, 10 + square_size - circle_radius)
+            x = random.randint(10 + circle_radius, 10 + SQUARE_SIZE - circle_radius)
+            y = random.randint(10 + circle_radius, 10 + SQUARE_SIZE - circle_radius)
 
             # Ensure this base station doesn't overlap with cities or other base stations
             if not any(are_points_within_range(x, y, [(cx, cy)], cr) for cx, cy, cr in city_centers) and not are_points_within_range(x, y, existing_points, 0, 1.5 * circle_radius):
@@ -122,9 +131,8 @@ def draw_random_points():
     # Redraw the cities on the canvas
     for i, (cx, cy, cradius) in enumerate(city_centers):
         canvas.create_text(cx, cy - 18, text=chr(65 + i), font=("Arial", 14, "bold"), fill='red', tags="city")
-        canvas.create_line(cx - 10, cy, cx + 10, cy, fill='black', tags="city")
-        canvas.create_line(cx, cy - 10, cx, cy + 10, fill='black', tags="city")
-        canvas.create_oval(cx - cradius, cy - cradius, cx + cradius, cy + cradius, outline='red', width=1.5, tags="city")
+        canvas.create_image(cx, cy, image=city_icon_tk, tags="city")
+        canvas.create_oval(cx - cradius, cy - cradius, cx + cradius, cy + cradius, outline='red', width=3, tags="city")
 
     # Draw base stations on the canvas
     for x, y in existing_points:
@@ -132,18 +140,16 @@ def draw_random_points():
         canvas.create_oval(x - circle_radius, y - circle_radius, x + circle_radius, y + circle_radius, outline='black', width=2, tags="base_station")
 
 
-square_size_var = tk.StringVar(value=SQUARE_SIZE)
 num_points_var = tk.StringVar(value=NUM_POINTS)
 circle_radius_var = tk.StringVar(value=CIRCLE_RADIUS)
 min_cities_var = tk.StringVar(value="2")
 max_cities_var = tk.StringVar(value="5")
 min_city_radius_var = tk.StringVar(value="80")
 max_city_radius_var = tk.StringVar(value="125")
-percentage_in_city_var = tk.StringVar(value="80")  # предположим, 80% от NUM_POINTS по умолчанию
-percentage_outside_var = tk.StringVar(value="20")  # и 20% от NUM_POINTS по умолчанию
+percentage_in_city_var = tk.StringVar(value="80")
+percentage_outside_var = tk.StringVar(value="20")
 
-tk.Label(root, text="SQUARE SIZE:").grid(row=0, column=1, sticky="e", padx=5, pady=5)
-tk.Entry(root, textvariable=square_size_var).grid(row=0, column=2, padx=5, pady=5)
+
 tk.Label(root, text="NUM POINTS:").grid(row=1, column=1, sticky="e", padx=5, pady=5)
 tk.Entry(root, textvariable=num_points_var).grid(row=1, column=2, padx=5, pady=5)
 tk.Label(root, text="CIRCLE RADIUS:").grid(row=2, column=1, sticky="e", padx=5, pady=5)
