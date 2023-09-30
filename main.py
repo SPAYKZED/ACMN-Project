@@ -19,10 +19,8 @@ img = Image.open("C:\\Python\\Project_ACMN\\map_bg.png").resize((SQUARE_SIZE, SQ
 img_tk = ImageTk.PhotoImage(img)
 ph_station = tk.PhotoImage(file='station.png')
 root.iconphoto(False,ph_station)
-city_icon = Image.open("C:\\Python\\Project_ACMN\\city.png").resize((50, 50))
+city_icon = Image.open("C:\\Python\\Project_ACMN\\city1.png").resize((30, 30))
 city_icon_tk = ImageTk.PhotoImage(city_icon)
-
-
 canvas.grid(row=0, column=0, rowspan=22)
 city_centers = []
 
@@ -46,7 +44,7 @@ def draw_random_points():
 
     canvas.delete("base_station")
     # Drawing the square on the canvas
-    canvas.create_rectangle(10, 10, 10 + SQUARE_SIZE, 10 + SQUARE_SIZE, fill='white', width=2)
+    canvas.create_rectangle(10, 10, 10 + SQUARE_SIZE, 10 + SQUARE_SIZE, fill='white', width=7)
     canvas.create_image(10, 10, anchor=tk.NW, image=img_tk, tags="background")
 
     # Gathering and preparing city parameters
@@ -111,6 +109,8 @@ def draw_random_points():
                 # Ensure this base station doesn't overlap with other base stations
                 if not are_points_within_range(x, y, existing_points, 0, 1.4 * circle_radius):
                     existing_points.append((x, y))
+                    canvas.create_oval(x, y, x + 3, y + 3, fill='black', tags="base_station")
+                    canvas.create_oval(x - circle_radius, y - circle_radius, x + circle_radius, y + circle_radius, outline='black', width=2, tags="base_station")
                     break
                 tries += 1
 
@@ -125,6 +125,8 @@ def draw_random_points():
             # Ensure this base station doesn't overlap with cities or other base stations
             if not any(are_points_within_range(x, y, [(cx, cy)], cr) for cx, cy, cr in city_centers) and not are_points_within_range(x, y, existing_points, 0, 1.5 * circle_radius):
                 existing_points.append((x, y))
+                canvas.create_oval(x, y, x + 3, y + 3, fill='blue', tags="base_station")
+                canvas.create_oval(x - circle_radius, y - circle_radius, x + circle_radius, y + circle_radius, outline='blue', width=2, tags="base_station")
                 break
             tries += 1
 
@@ -135,9 +137,9 @@ def draw_random_points():
         canvas.create_oval(cx - cradius, cy - cradius, cx + cradius, cy + cradius, outline='red', width=3, tags="city")
 
     # Draw base stations on the canvas
-    for x, y in existing_points:
-        canvas.create_oval(x, y, x + 2, y + 2, fill='black', tags="base_station")
-        canvas.create_oval(x - circle_radius, y - circle_radius, x + circle_radius, y + circle_radius, outline='black', width=2, tags="base_station")
+  # for x, y in existing_points:
+  #     canvas.create_oval(x, y, x + 2, y + 2, fill='black', tags="base_station")
+  #     canvas.create_oval(x - circle_radius, y - circle_radius, x + circle_radius, y + circle_radius, outline='black', width=2, tags="base_station")
 
 
 num_points_var = tk.StringVar(value=NUM_POINTS)
@@ -168,7 +170,8 @@ tk.Label(root, text="% OF ST. OUTSIDE:").grid(row=8, column=1, sticky="e", padx=
 tk.Entry(root, textvariable=percentage_outside_var).grid(row=8, column=2, padx=5, pady=5)
 keep_cities_var = tk.BooleanVar()
 tk.Checkbutton(root, text="Keep cities on map", variable=keep_cities_var).grid(row=10, column=1, columnspan=2, pady=5)
-tk.Button(root, text="\n          Apply          \n", command=draw_random_points).grid(row=9, column=1, columnspan=2, pady=20)
+tk.Button(root, text="\n          Apply          \n", command=draw_random_points, activebackground='blue', activeforeground='white', relief='raised', bd=5).grid(row=9, column=1, columnspan=2, pady=20)
+
 
 draw_random_points()
 root.mainloop()
