@@ -30,13 +30,13 @@ def are_points_within_range(x, y, points, min_distance, max_distance=None):
         px, py = point[:2]  # Extract the x and y coordinates of the point
         distance = ((x - px) ** 2 + (y - py) ** 2) ** 0.5  # Calculate Euclidean distance
         # If max_distance is provided, check if the point is within the min and max range. Otherwise, check if it's less than min_distance.
-        if max_distance:                                                          #param x: x-coordinate of the point
-            if min_distance <= distance <= max_distance:                          #param y: y-coordinate of the point
-                return True                                                       #param points: list of points (other points to check against)
-        else:                                                                     #param min_distance: minimum distance to check
-            if distance < min_distance:                                           #param max_distance: maximum distance to check (if specified)
-                return True                                                       #return: True if the point is within the specified range
-    return False                                                                  #of any point in the list, otherwise False
+        if max_distance:                                                      #param x: x-coordinate of the point
+            if min_distance <= distance <= max_distance:                      #param y: y-coordinate of the point
+                return True                                                   #param points: list of points (other points to check against)
+        else:                                                                 #param min_distance: minimum distance to check
+            if distance < min_distance:                                       #param max_distance: maximum distance to check (if specified)
+                return True                                                   #return: True if the point is within the specified range
+    return False                                                              #of any point in the list, otherwise False
 
 
 def draw_random_points():
@@ -152,22 +152,37 @@ percentage_in_city_var = tk.StringVar(value="80")
 percentage_outside_var = tk.StringVar(value="20")
 
 
-tk.Label(root, text="NUM POINTS:").grid(row=1, column=1, sticky="e", padx=5, pady=5)
-tk.Entry(root, textvariable=num_points_var).grid(row=1, column=2, padx=5, pady=5)
-tk.Label(root, text="CIRCLE RADIUS:").grid(row=2, column=1, sticky="e", padx=5, pady=5)
-tk.Entry(root, textvariable=circle_radius_var).grid(row=2, column=2, padx=5, pady=5)
-tk.Label(root, text="MIN CITIES:").grid(row=3, column=1, sticky="e", padx=5, pady=5)
-tk.Entry(root, textvariable=min_cities_var).grid(row=3, column=2, padx=5, pady=5)
-tk.Label(root, text="MAX CITIES:").grid(row=4, column=1, sticky="e", padx=5, pady=5)
-tk.Entry(root, textvariable=max_cities_var).grid(row=4, column=2, padx=5, pady=5)
-tk.Label(root, text="MIN CITY RADIUS:").grid(row=5, column=1, sticky="e", padx=5, pady=5)
-tk.Entry(root, textvariable=min_city_radius_var).grid(row=5, column=2, padx=5, pady=5)
-tk.Label(root, text="MAX CITY RADIUS:").grid(row=6, column=1, sticky="e", padx=5, pady=5)
-tk.Entry(root, textvariable=max_city_radius_var).grid(row=6, column=2, padx=5, pady=5)
-tk.Label(root, text="% ST. IN THE CITY:").grid(row=7, column=1, sticky="e", padx=5, pady=5)
-tk.Entry(root, textvariable=percentage_in_city_var).grid(row=7, column=2, padx=5, pady=5)
-tk.Label(root, text="% OF ST. OUTSIDE:").grid(row=8, column=1, sticky="e", padx=5, pady=5)
-tk.Entry(root, textvariable=percentage_outside_var).grid(row=8, column=2, padx=5, pady=5)
+stations_count_frame = tk.LabelFrame(root, text="Stations Count & Radius", padx=5, pady=5)
+stations_count_frame.grid(row=1, column=1, columnspan=2, padx=5, pady=5, sticky="ew")
+tk.Label(stations_count_frame, text="COUNT:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+tk.Entry(stations_count_frame, textvariable=num_points_var).grid(row=0, column=1, padx=5, pady=5)
+tk.Label(stations_count_frame, text="RADIUS:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+tk.Entry(stations_count_frame, textvariable=circle_radius_var).grid(row=1, column=1, padx=5, pady=5)
+
+
+cities_count_frame = tk.LabelFrame(root, text="Cities Count Range", padx=5, pady=5)
+cities_count_frame.grid(row=3, column=1, columnspan=2, padx=5, pady=5, sticky="ew")
+tk.Label(cities_count_frame, text="MIN COUNT:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+tk.Entry(cities_count_frame, textvariable=min_cities_var).grid(row=0, column=1, padx=5, pady=5)
+tk.Label(cities_count_frame, text="MAX COUNT:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+tk.Entry(cities_count_frame, textvariable=max_cities_var).grid(row=1, column=1, padx=5, pady=5)
+
+
+city_radius_frame = tk.LabelFrame(root, text="City Radius Range", padx=5, pady=5)
+city_radius_frame.grid(row=5, column=1, columnspan=2, padx=5, pady=5, sticky="ew")
+tk.Label(city_radius_frame, text="MIN:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+tk.Entry(city_radius_frame, textvariable=min_city_radius_var).grid(row=0, column=1, padx=5, pady=5)
+tk.Label(city_radius_frame, text="MAX:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+tk.Entry(city_radius_frame, textvariable=max_city_radius_var).grid(row=1, column=1, padx=5, pady=5)
+
+
+stations_percent_frame = tk.LabelFrame(root, text="Stations Percentage", padx=5, pady=5)
+stations_percent_frame.grid(row=7, column=1, columnspan=2, padx=5, pady=5, sticky="ew")
+tk.Label(stations_percent_frame, text="INSIDE CITY:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+tk.Entry(stations_percent_frame, textvariable=percentage_in_city_var).grid(row=0, column=1, padx=5, pady=5)
+tk.Label(stations_percent_frame, text="OUTSIDE CITY:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+tk.Entry(stations_percent_frame, textvariable=percentage_outside_var).grid(row=1, column=1, padx=5, pady=5)
+
 keep_cities_var = tk.BooleanVar()
 tk.Checkbutton(root, text="Keep cities on map", variable=keep_cities_var).grid(row=10, column=1, columnspan=2, pady=5)
 tk.Button(root, text="\n          Apply          \n", command=draw_random_points, activebackground='blue', activeforeground='white', relief='raised', bd=5).grid(row=9, column=1, columnspan=2, pady=20)
