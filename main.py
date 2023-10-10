@@ -5,16 +5,19 @@ import math
 from PIL import Image, ImageTk
 
 # Initial parameters
-WINDOW_SIZE = 1075
 SQUARE_SIZE = 775
 NUM_POINTS = 100
 CIRCLE_RADIUS = 25
+city_centers = []
+
 
 root = tk.Tk()
 root.title("Mobile Network Base Stations")
-root.geometry(f"{WINDOW_SIZE}x{WINDOW_SIZE}")
-
+screen_width = root.winfo_screenwidth()
+screen_height = root.winfo_screenheight()
+root.geometry(f"{screen_width}x{screen_height}+0+0")
 canvas = tk.Canvas(root, bg='white', width=795, height=795)
+
 img = Image.open("C:\\Python\\Project_ACMN\\map_bg.png").resize((SQUARE_SIZE, SQUARE_SIZE))
 img_tk = ImageTk.PhotoImage(img)
 ph_station = tk.PhotoImage(file='station.png')
@@ -22,10 +25,20 @@ root.iconphoto(False,ph_station)
 city_icon = Image.open("C:\\Python\\Project_ACMN\\city1.png").resize((30, 30))
 city_icon_tk = ImageTk.PhotoImage(city_icon)
 canvas.grid(row=0, column=0, rowspan=22)
-city_centers = []
+
+
+def update_outside_city(*args):
+    ''' Updating the percentage of stations outside of the city.'''
+    try:
+        inside_val = percentage_in_city_var.get()
+        outside_val = 100 - inside_val
+        percentage_outside_var.set(outside_val)
+    except:
+        pass
+
 
 def are_points_within_range(x, y, points, min_distance, max_distance=None):
-    #This function checks if a given point (x, y) is within a certain distance range of any points from the list.
+    '''This function checks if a given point (x, y) is within a certain distance range of any points from the list.'''
     for point in points:
         px, py = point[:2]  # Extract the x and y coordinates of the point
         distance = ((x - px) ** 2 + (y - py) ** 2) ** 0.5  # Calculate Euclidean distance
@@ -44,7 +57,7 @@ def draw_random_points():
 
     canvas.delete("base_station")
     # Drawing the square on the canvas
-    canvas.create_rectangle(10, 10, 10 + SQUARE_SIZE, 10 + SQUARE_SIZE, fill='white', width=7)
+    canvas.create_rectangle(5, 5, 790, 790, fill='white', width=5)
     canvas.create_image(10, 10, anchor=tk.NW, image=img_tk, tags="background")
 
     # Gathering and preparing city parameters
@@ -136,11 +149,6 @@ def draw_random_points():
         canvas.create_image(cx, cy, image=city_icon_tk, tags="city")
         canvas.create_oval(cx - cradius, cy - cradius, cx + cradius, cy + cradius, outline='red', width=3, tags="city")
 
-    # Draw base stations on the canvas
-  # for x, y in existing_points:
-  #     canvas.create_oval(x, y, x + 2, y + 2, fill='black', tags="base_station")
-  #     canvas.create_oval(x - circle_radius, y - circle_radius, x + circle_radius, y + circle_radius, outline='black', width=2, tags="base_station")
-
 
 num_points_var = tk.StringVar(value=NUM_POINTS)
 circle_radius_var = tk.StringVar(value=CIRCLE_RADIUS)
@@ -148,9 +156,9 @@ min_cities_var = tk.StringVar(value="2")
 max_cities_var = tk.StringVar(value="5")
 min_city_radius_var = tk.StringVar(value="80")
 max_city_radius_var = tk.StringVar(value="125")
-percentage_in_city_var = tk.StringVar(value="80")
-percentage_outside_var = tk.StringVar(value="20")
-
+percentage_in_city_var = tk.IntVar(value="80")
+percentage_outside_var = tk.IntVar(value="20")
+percentage_in_city_var.trace("w", update_outside_city)
 
 stations_count_frame = tk.LabelFrame(root, text="Stations Count & Radius", padx=5, pady=5)
 stations_count_frame.grid(row=1, column=1, columnspan=2, padx=5, pady=5, sticky="ew")
@@ -179,13 +187,17 @@ tk.Entry(city_radius_frame, textvariable=max_city_radius_var).grid(row=1, column
 stations_percent_frame = tk.LabelFrame(root, text="Stations Percentage", padx=5, pady=5)
 stations_percent_frame.grid(row=7, column=1, columnspan=2, padx=5, pady=5, sticky="ew")
 tk.Label(stations_percent_frame, text="INSIDE CITY:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
-tk.Entry(stations_percent_frame, textvariable=percentage_in_city_var).grid(row=0, column=1, padx=5, pady=5)
+spinbox_inside_city = tk.Spinbox(stations_percent_frame, from_=0, to=100, width=3, textvariable=percentage_in_city_var)
+spinbox_inside_city.grid(row=0, column=1, padx=5, pady=5, sticky="w")
 tk.Label(stations_percent_frame, text="OUTSIDE CITY:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
-tk.Entry(stations_percent_frame, textvariable=percentage_outside_var).grid(row=1, column=1, padx=5, pady=5)
+tk.Entry(stations_percent_frame, textvariable=percentage_outside_var, state='readonly', width=3).grid(row=1, column=1, padx=5, pady=5, sticky="w")
+
+
 
 keep_cities_var = tk.BooleanVar()
 tk.Checkbutton(root, text="Keep cities on map", variable=keep_cities_var).grid(row=10, column=1, columnspan=2, pady=5)
 tk.Button(root, text="\n          Apply          \n", command=draw_random_points, activebackground='blue', activeforeground='white', relief='raised', bd=5).grid(row=9, column=1, columnspan=2, pady=20)
+
 
 
 draw_random_points()
