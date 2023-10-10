@@ -167,7 +167,6 @@ tk.Entry(stations_count_frame, textvariable=num_points_var).grid(row=0, column=1
 tk.Label(stations_count_frame, text="RADIUS:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
 tk.Entry(stations_count_frame, textvariable=circle_radius_var).grid(row=1, column=1, padx=5, pady=5)
 
-
 cities_count_frame = tk.LabelFrame(root, text="Cities Count Range", padx=5, pady=5)
 cities_count_frame.grid(row=3, column=1, columnspan=2, padx=5, pady=5, sticky="ew")
 tk.Label(cities_count_frame, text="MIN COUNT:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
@@ -175,14 +174,12 @@ tk.Entry(cities_count_frame, textvariable=min_cities_var).grid(row=0, column=1, 
 tk.Label(cities_count_frame, text="MAX COUNT:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
 tk.Entry(cities_count_frame, textvariable=max_cities_var).grid(row=1, column=1, padx=5, pady=5)
 
-
 city_radius_frame = tk.LabelFrame(root, text="City Radius Range", padx=5, pady=5)
 city_radius_frame.grid(row=5, column=1, columnspan=2, padx=5, pady=5, sticky="ew")
 tk.Label(city_radius_frame, text="MIN:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
 tk.Entry(city_radius_frame, textvariable=min_city_radius_var).grid(row=0, column=1, padx=5, pady=5)
 tk.Label(city_radius_frame, text="MAX:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
 tk.Entry(city_radius_frame, textvariable=max_city_radius_var).grid(row=1, column=1, padx=5, pady=5)
-
 
 stations_percent_frame = tk.LabelFrame(root, text="Stations Percentage", padx=5, pady=5)
 stations_percent_frame.grid(row=7, column=1, columnspan=2, padx=5, pady=5, sticky="ew")
@@ -193,11 +190,9 @@ tk.Label(stations_percent_frame, text="OUTSIDE CITY:").grid(row=1, column=0, sti
 tk.Entry(stations_percent_frame, textvariable=percentage_outside_var, state='readonly', width=3).grid(row=1, column=1, padx=5, pady=5, sticky="w")
 
 
-
 keep_cities_var = tk.BooleanVar()
 tk.Checkbutton(root, text="Keep cities on map", variable=keep_cities_var).grid(row=10, column=1, columnspan=2, pady=5)
 tk.Button(root, text="\n          Apply          \n", command=draw_random_points, activebackground='blue', activeforeground='white', relief='raised', bd=5).grid(row=9, column=1, columnspan=2, pady=20)
-
 
 
 draw_random_points()
