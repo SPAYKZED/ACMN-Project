@@ -25,7 +25,6 @@ city_icon = Image.open("C:\\Python\\Project_ACMN\\city1.png").resize((30, 30))
 city_icon_tk = ImageTk.PhotoImage(city_icon)
 canvas.grid(row=0, column=0, rowspan=22)
 
-
 def update_outside_city(*args):
     ''' Updating the percentage of stations outside of the city.'''
     try:
