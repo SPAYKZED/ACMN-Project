@@ -39,6 +39,13 @@ def update_outside_city(*args):
     except:
         pass
 
+def update_scales(min_scale, max_scale):
+    min_val = min_scale.get()
+    max_val = max_scale.get()
+    if min_val > max_val:
+        min_scale.set(max_val)
+    elif max_val < min_val:
+        max_scale.set(min_val)
 
 def are_points_within_range(x, y, points, min_distance, max_distance=None):
     '''This function checks if a given point (x, y) is within a certain distance range of any points from the list.'''
@@ -54,11 +61,41 @@ def are_points_within_range(x, y, points, min_distance, max_distance=None):
                 return True                                                   #return: True if the point is within the specified range
     return False                                                              #of any point in the list, otherwise False
 
+def on_canvas_click(event):
+    for idx, station in enumerate(base_stations):
+        x, y, radius = station["x"], station["y"], station["radius"]
+        if (x - event.x)**2 + (y - event.y)**2 <= radius**2:
+            highlight_station(idx)
+            break
+canvas.bind("<Button-1>", on_canvas_click)
+
+def highlight_station(idx):
+    # Подсвечиваем станцию на холсте
+    station = base_stations[idx]
+    x, y, radius = station["x"], station["y"], station["radius"]
+    canvas.create_oval(x - radius, y - radius, x + radius, y + radius, outline='yellow', width=4, tags="highlight")
+
+    # Выделяем строку в таблице
+    for row in tree.get_children():
+        if tree.item(row)["values"][0] == idx:  # Ищем нужную строку по ID станции. Помним, что мы начинаем с 1
+            tree.selection_set(row)
+            tree.see(row)  # Прокручиваем таблицу так, чтобы выбранная запись была видимой
+            break
+    else:
+        tree.selection_remove(tree.selection())
+def clear_highlight():
+    '''Clear the highlighted station on the canvas and deselect any row in the table.'''
+    canvas.delete("highlight")
+    tree.selection_remove(tree.selection())
+
+
 
 def draw_random_points():
     #Draws random base stations and cities on the canvas based on user parameters.
 
     canvas.delete("base_station")
+    canvas.delete("highlight")
+    base_stations.clear()
     canvas.create_rectangle(5, 5, 790, 790, fill='white', width=5)
     canvas.create_image(10, 10, anchor=tk.NW, image=img_tk, tags="background")
 
@@ -73,7 +110,6 @@ def draw_random_points():
     if not keep_cities_var.get() or not city_centers:
         canvas.delete("city")  # Also delete existing cities if they were drawn previously
         city_centers.clear()
-        base_stations.clear()
 
         # Drawing the cities
         for _ in range(num_cities):
@@ -154,23 +190,20 @@ def draw_random_points():
         canvas.create_image(cx, cy, image=city_icon_tk, tags="city")
         canvas.create_oval(cx - cradius, cy - cradius, cx + cradius, cy + cradius, outline='red', width=3, tags="city")
 
-        # Очистка предыдущих записей в таблице
+    # Clearing previous records in the table
     for i in tree.get_children():
             tree.delete(i)
 
     for idx, (x, y) in enumerate(existing_points):
-            # Запись информации о базовой станции в список
-        canvas.create_text(x, y - 10, text=str(idx), font=("Arial", 10, "bold"), fill='green', tags="base_station")  # Номер станции
-
+            # Writing base station information to the list
+        canvas.create_text(x, y - 10, text=str(idx), font=("Arial", 10, "bold"), fill='green', tags="base_station")
 
     for station in base_stations:
         x = station["x"]
         y = station["y"]
         idx = station["id"]
         radius = station["radius"]
-        # Добавление строки в таблицу
         tree.insert("", tk.END, values=(idx, round(x, 2), round(y, 2), radius))  # added rounding for better presentation
-
 
 
 num_points_var = tk.StringVar(value=NUM_POINTS)
@@ -202,7 +235,7 @@ tree.heading("X", text="X", anchor=tk.W)
 tree.heading("Y", text="Y", anchor=tk.W)
 tree.heading("Radius", text="Radius", anchor=tk.W)
 
-tree.grid(row=0, column=3, padx=20, pady=20, sticky='nw')
+tree.grid(row=0, column=3, padx=10, pady=13, sticky='nw')
 
 stations_count_frame = tk.LabelFrame(root, text="Stations Count & Radius", padx=5, pady=5)
 stations_count_frame.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
@@ -214,16 +247,16 @@ outside_city_frame = tk.LabelFrame(stations_count_frame, text="Outside City", pa
 outside_city_frame.grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
 tk.Label(in_city_frame, text="MIN RADIUS:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
-min_radius_in_city_scale = tk.Scale(in_city_frame, from_=0, to=100, orient=tk.HORIZONTAL, variable=min_radius_in_city_var)
+min_radius_in_city_scale = tk.Scale(in_city_frame, from_=0, to=100, orient=tk.HORIZONTAL, variable=min_radius_in_city_var, command=lambda x: update_scales(min_radius_in_city_scale, max_radius_in_city_scale))
 min_radius_in_city_scale.grid(row=0, column=1, padx=5, pady=5)
 tk.Label(in_city_frame, text="MAX RADIUS:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
-max_radius_in_city_scale = tk.Scale(in_city_frame, from_=0, to=100, orient=tk.HORIZONTAL, variable=max_radius_in_city_var)
+max_radius_in_city_scale = tk.Scale(in_city_frame, from_=0, to=100, orient=tk.HORIZONTAL, variable=max_radius_in_city_var, command=lambda x: update_scales(min_radius_in_city_scale, max_radius_in_city_scale))
 max_radius_in_city_scale.grid(row=1, column=1, padx=5, pady=5)
 tk.Label(outside_city_frame, text="MIN RADIUS:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
-min_radius_outside_city_scale = tk.Scale(outside_city_frame, from_=0, to=100, orient=tk.HORIZONTAL, variable=min_radius_outside_var)
+min_radius_outside_city_scale = tk.Scale(outside_city_frame, from_=0, to=100, orient=tk.HORIZONTAL, variable=min_radius_outside_var, command=lambda x: update_scales(min_radius_outside_city_scale, max_radius_outside_city_scale))
 min_radius_outside_city_scale.grid(row=0, column=1, padx=5, pady=5)
 tk.Label(outside_city_frame, text="MAX RADIUS:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
-max_radius_outside_city_scale = tk.Scale(outside_city_frame, from_=0, to=100, orient=tk.HORIZONTAL, variable=max_radius_outside_var)
+max_radius_outside_city_scale = tk.Scale(outside_city_frame, from_=0, to=100, orient=tk.HORIZONTAL, variable=max_radius_outside_var, command=lambda x: update_scales(min_radius_outside_city_scale, max_radius_outside_city_scale))
 max_radius_outside_city_scale.grid(row=1, column=1, padx=5, pady=5)
 
 stations_percent_frame = tk.LabelFrame(root, text="Stations Percentage", padx=5, pady=5)
@@ -250,6 +283,8 @@ tk.Entry(city_radius_frame, textvariable=min_city_radius_var, width=5).grid(row=
 tk.Label(city_radius_frame, text="MAX:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
 tk.Entry(city_radius_frame, textvariable=max_city_radius_var, width=5).grid(row=1, column=1, padx=5, pady=5)
 
+clear_highlight_btn = tk.Button(root, text="Clear Highlight", command=clear_highlight)
+clear_highlight_btn.grid(row=6, column=1, columnspan=1, pady=5)
 
 tk.Checkbutton(root, text="Keep cities on map", variable=keep_cities_var).grid(row=5, column=1, columnspan=1, pady=5)
 tk.Button(root, text="\n          Apply          \n", command=draw_random_points, activebackground='blue', activeforeground='white', relief='raised', bd=5).grid(row=4, column=1, columnspan=1, pady=20)
