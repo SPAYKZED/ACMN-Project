@@ -7,7 +7,6 @@ from PIL import Image, ImageTk
 
 # Initial parameters
 SQUARE_SIZE = 775
-NUM_POINTS = 100
 city_centers = []
 base_stations = []
 
@@ -53,13 +52,13 @@ def are_points_within_range(x, y, points, min_distance, max_distance=None):
         px, py = point[:2]  # Extract the x and y coordinates of the point
         distance = ((x - px) ** 2 + (y - py) ** 2) ** 0.5  # Calculate Euclidean distance
         # If max_distance is provided, check if the point is within the min and max range. Otherwise, check if it's less than min_distance.
-        if max_distance:                                                      #param x: x-coordinate of the point
-            if min_distance <= distance <= max_distance:                      #param y: y-coordinate of the point
-                return True                                                   #param points: list of points (other points to check against)
-        else:                                                                 #param min_distance: minimum distance to check
-            if distance < min_distance:                                       #param max_distance: maximum distance to check (if specified)
-                return True                                                   #return: True if the point is within the specified range
-    return False                                                              #of any point in the list, otherwise False
+        if max_distance:
+            if min_distance <= distance <= max_distance:
+                return True
+        else:
+            if distance < min_distance:
+                return True
+    return False
 
 def on_canvas_click(event):
     for idx, station in enumerate(base_stations):
@@ -77,10 +76,11 @@ def highlight_station(idx):
     for row in tree.get_children():
         if tree.item(row)["values"][0] == idx:
             tree.selection_set(row)
-            tree.see(row)  #
+            tree.see(row)
             break
     else:
         tree.selection_remove(tree.selection())
+
 def clear_highlight():
     '''Clear the highlighted station on the canvas and deselect any row in the table.'''
     canvas.delete("highlight")
@@ -157,7 +157,7 @@ def draw_random_points():
                 # Ensure this base station doesn't overlap with other base stations
                 if not are_points_within_range(x, y, existing_points, 0, 1.4 * circle_radius_in_city):
                     existing_points.append((x, y))
-                    base_stations.append({"id": len(base_stations)+1, "x": x, "y": y, "radius": circle_radius_in_city})
+                    base_stations.append({"id": len(base_stations), "x": x, "y": y, "radius": circle_radius_in_city, "position": "IN"})
                     canvas.create_oval(x, y, x + 3, y + 3, fill='black', tags="base_station")
                     canvas.create_oval(x - circle_radius_in_city, y - circle_radius_in_city, x + circle_radius_in_city, y + circle_radius_in_city, outline='black', width=2, tags="base_station")
                     break
@@ -175,7 +175,7 @@ def draw_random_points():
             # Ensure this base station doesn't overlap with cities or other base stations
             if not any(are_points_within_range(x, y, [(cx, cy)], cr) for cx, cy, cr in city_centers) and not are_points_within_range(x, y, existing_points, 0, 1.4 * circle_radius_outside):
                 existing_points.append((x, y))
-                base_stations.append({"id": len(base_stations)+1, "x": x, "y": y, "radius": circle_radius_outside})
+                base_stations.append({"id": len(base_stations), "x": x, "y": y, "radius": circle_radius_outside, "position": "OUT"})
                 canvas.create_oval(x, y, x + 3, y + 3, fill='blue', tags="base_station")
                 canvas.create_oval(x - circle_radius_outside, y - circle_radius_outside, x + circle_radius_outside, y + circle_radius_outside, outline='blue', width=2, tags="base_station")
                 break
@@ -200,39 +200,73 @@ def draw_random_points():
         y = station["y"]
         idx = station["id"]
         radius = station["radius"]
-        tree.insert("", tk.END, values=(idx, round(x, 2), round(y, 2), radius))  # added rounding for better presentation
+        position = station["position"]
+        tree.insert("", tk.END, values=(idx, round(x), round(y), radius, position))
 
+    for i in city_tree.get_children():
+        city_tree.delete(i)
+    for i, (cx, cy, cradius) in enumerate(city_centers):
+        city_tree.insert("", tk.END, values=(chr(65 + i), round(cx), round(cy), cradius))
 
-num_points_var = tk.StringVar(value=NUM_POINTS)
-min_radius_in_city_var = tk.IntVar(value="25")
-max_radius_in_city_var = tk.IntVar(value="25")
-min_radius_outside_var = tk.IntVar(value="25")
-max_radius_outside_var = tk.IntVar(value="25")
-min_cities_var = tk.StringVar(value="2")
-max_cities_var = tk.StringVar(value="5")
-min_city_radius_var = tk.StringVar(value="80")
-max_city_radius_var = tk.StringVar(value="125")
-percentage_in_city_var = tk.IntVar(value="80")
-percentage_outside_var = tk.IntVar(value="20")
+num_points_var = tk.IntVar(value=100)
+min_radius_in_city_var = tk.IntVar(value=25)
+max_radius_in_city_var = tk.IntVar(value=25)
+min_radius_outside_var = tk.IntVar(value=25)
+max_radius_outside_var = tk.IntVar(value=25)
+min_cities_var = tk.IntVar(value=2)
+max_cities_var = tk.IntVar(value=5)
+min_city_radius_var = tk.IntVar(value=80)
+max_city_radius_var = tk.IntVar(value=125)
+percentage_in_city_var = tk.IntVar(value=80)
+percentage_outside_var = tk.IntVar(value=20)
 percentage_in_city_var.trace("w", update_outside_city)
 keep_cities_var = tk.BooleanVar()
 
 
-tree = ttk.Treeview(root, height=15)
-tree["columns"] = ("ID", "X", "Y", "Radius")
+bts_info_frame = tk.LabelFrame(root, text="BTS information", padx=5, pady=5)
+bts_info_frame.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
+
+station_id_entry_var = tk.StringVar()
+tk.Label(bts_info_frame, text="Station ID:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+tk.Entry(bts_info_frame, textvariable=station_id_entry_var, width=15).grid(row=0, column=1, padx=5, pady=5)
+
+tk.Button(bts_info_frame, text="Find", command=()).grid(row=0, column=2, padx=5)
+
+tree = ttk.Treeview(bts_info_frame, height=5)
+tree["columns"] = ("ID", "X", "Y", "Radius", "Position")
 tree.column("#0", width=0, stretch=tk.NO)
 tree.column("ID", anchor=tk.W, width=30)
-tree.column("X", anchor=tk.W, width=50)
-tree.column("Y", anchor=tk.W, width=50)
-tree.column("Radius", anchor=tk.W, width=50)
+tree.column("X", anchor=tk.W, width=40)
+tree.column("Y", anchor=tk.W, width=40)
+tree.column("Radius", anchor=tk.W, width=45)
+tree.column("Position", anchor=tk.W, width=50)
 
 tree.heading("#0", text="", anchor=tk.W)
 tree.heading("ID", text="ID", anchor=tk.W)
 tree.heading("X", text="X", anchor=tk.W)
 tree.heading("Y", text="Y", anchor=tk.W)
 tree.heading("Radius", text="Radius", anchor=tk.W)
+tree.heading("Position", text="Position", anchor=tk.W)
 
-tree.grid(row=0, column=3, padx=10, pady=13, sticky='nw')
+tree.grid(row=1, column=0, columnspan=3, padx=10, pady=13, sticky='nw')
+
+city_info_frame = tk.LabelFrame(root, text="City information", padx=5, pady=5)
+city_info_frame.grid(row=0, column=2, padx=5, pady=5, sticky="s")
+city_tree = ttk.Treeview(city_info_frame, height=2)
+city_tree["columns"] = ("ID", "X", "Y", "Radius")
+city_tree.column("#0", width=0, stretch=tk.NO)
+city_tree.column("ID", anchor=tk.W, width=30)
+city_tree.column("X", anchor=tk.W, width=30)
+city_tree.column("Y", anchor=tk.W, width=30)
+city_tree.column("Radius", anchor=tk.W, width=45)
+
+city_tree.heading("#0", text="", anchor=tk.W)
+city_tree.heading("ID", text="ID", anchor=tk.W)
+city_tree.heading("X", text="X", anchor=tk.W)
+city_tree.heading("Y", text="Y", anchor=tk.W)
+city_tree.heading("Radius", text="Radius", anchor=tk.W)
+
+city_tree.grid(row=0, column=0, columnspan=3, padx=10, pady=13, sticky='nw')
 
 stations_count_frame = tk.LabelFrame(root, text="Stations Count & Radius", padx=5, pady=5)
 stations_count_frame.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
@@ -280,12 +314,12 @@ tk.Entry(city_radius_frame, textvariable=min_city_radius_var, width=5).grid(row=
 tk.Label(city_radius_frame, text="MAX [ Km ]:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
 tk.Entry(city_radius_frame, textvariable=max_city_radius_var, width=5).grid(row=1, column=1, padx=5, pady=5)
 
-clear_highlight_btn = tk.Button(root, text="Clear Highlight", command=clear_highlight)
-clear_highlight_btn.grid(row=6, column=1, columnspan=1, pady=5)
-
-tk.Checkbutton(root, text="Keep cities on map", variable=keep_cities_var).grid(row=5, column=1, columnspan=1, pady=5)
-tk.Button(root, text="\n          Apply          \n", command=draw_random_points, activebackground='blue', activeforeground='white', relief='raised', bd=5).grid(row=4, column=1, columnspan=1, pady=20)
-
+controls_frame = tk.LabelFrame(root, text="Controls", padx=5, pady=5)
+controls_frame.grid(row=2, column=2, padx=5, pady=5, sticky="n")
+clear_highlight_btn = tk.Button(controls_frame, text="Clear Highlight", command=clear_highlight)
+clear_highlight_btn.grid(row=1, column=0, pady=5, padx=5)
+tk.Checkbutton(controls_frame, text="Keep cities on map", variable=keep_cities_var).grid(row=0, column=0, pady=5, padx=5)
+tk.Button(controls_frame, text="\n          Apply          \n", command=draw_random_points, activebackground='blue', activeforeground='white', relief='raised', bd=5).grid(row=2, column=0, pady=5, padx=5)
 
 draw_random_points()
 root.mainloop()
