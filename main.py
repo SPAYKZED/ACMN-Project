@@ -69,23 +69,45 @@ def on_canvas_click(event):
 canvas.bind("<Button-1>", on_canvas_click)
 
 def highlight_station(idx):
+    # Highlight the station on the canvas
     station = base_stations[idx]
     x, y, radius = station["x"], station["y"], station["radius"]
     canvas.create_oval(x - radius, y - radius, x + radius, y + radius, outline='yellow', width=4, tags="highlight")
 
-    for row in tree.get_children():
-        if tree.item(row)["values"][0] == idx:
-            tree.selection_set(row)
-            tree.see(row)
+    for i in tree.get_children():
+        if tree.item(i)['values'][0] == station["id"]:
+            tree.selection_set(i)  # This highlights the row
+            tree.see(i)  # This ensures the row is visible
             break
-    else:
-        tree.selection_remove(tree.selection())
+
+    # Check if station is already in the selected stations list to avoid duplicates
+    existing_ids = [selected_tree.item(child)["values"][0] for child in selected_tree.get_children()]
+    if station["id"] not in existing_ids:
+        # Add the selected station's data to the new Treeview
+        new_item = selected_tree.insert("", tk.END, values=(station["id"], round(x), round(y), radius, station["position"]))
+        selected_tree.focus(new_item)
+        selected_tree.selection_set(new_item)
+        selected_tree.see(new_item)
+
+
 
 def clear_highlight():
     '''Clear the highlighted station on the canvas and deselect any row in the table.'''
     canvas.delete("highlight")
     tree.selection_remove(tree.selection())
 
+def find_station():
+    station_id = station_id_entry_var.get()
+    if station_id.isdigit():
+        station_id = int(station_id)
+        for idx, station in enumerate(base_stations):
+            if station["id"] == station_id:
+                highlight_station(idx)
+                break
+        else:
+            tk.messagebox.showinfo("Information", "Station ID not found.")
+    else:
+        tk.messagebox.showwarning("Warning", "Please enter a valid station ID.")
 
 def draw_random_points():
     #Draws random base stations and cities on the canvas based on user parameters.
@@ -223,14 +245,8 @@ percentage_in_city_var.trace("w", update_outside_city)
 keep_cities_var = tk.BooleanVar()
 
 
-bts_info_frame = tk.LabelFrame(root, text="BTS information", padx=5, pady=5)
-bts_info_frame.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
-
-station_id_entry_var = tk.StringVar()
-tk.Label(bts_info_frame, text="Station ID:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
-tk.Entry(bts_info_frame, textvariable=station_id_entry_var, width=15).grid(row=0, column=1, padx=5, pady=5)
-
-tk.Button(bts_info_frame, text="Find", command=()).grid(row=0, column=2, padx=5)
+bts_info_frame = tk.LabelFrame(root, text="Info on all BTS", padx=5, pady=5)
+bts_info_frame.grid(row=0, column=3, rowspan=3, padx=5, pady=5, sticky="new")
 
 tree = ttk.Treeview(bts_info_frame, height=5)
 tree["columns"] = ("ID", "X", "Y", "Radius", "Position")
@@ -247,8 +263,35 @@ tree.heading("X", text="X", anchor=tk.W)
 tree.heading("Y", text="Y", anchor=tk.W)
 tree.heading("Radius", text="Radius", anchor=tk.W)
 tree.heading("Position", text="Position", anchor=tk.W)
+tree.grid(row=1, column=0, columnspan=3, padx=10, pady=13, sticky='ew')
 
-tree.grid(row=1, column=0, columnspan=3, padx=10, pady=13, sticky='nw')
+
+selected_bts_info_frame = tk.LabelFrame(root, text="Selected BTS Info", padx=5, pady=5)
+selected_bts_info_frame.grid(row=2, column=1, padx=5, pady=5, sticky="nsew")
+station_id_entry_var = tk.StringVar()
+tk.Label(selected_bts_info_frame, text="Station ID:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+station_id_entry = tk.Entry(selected_bts_info_frame, textvariable=station_id_entry_var, width=10)
+station_id_entry.grid(row=0, column=1, padx=5, pady=5)
+find_button = tk.Button(selected_bts_info_frame, text="Find", command=find_station)
+find_button.grid(row=0, column=2, padx=5, pady=5)
+
+selected_tree = ttk.Treeview(selected_bts_info_frame, height=3)
+selected_tree["columns"] = ("ID", "X", "Y", "Radius", "Position")
+selected_tree.column("#0", width=0, stretch=tk.NO)
+selected_tree.column("ID", anchor=tk.W, width=30)
+selected_tree.column("X", anchor=tk.W, width=40)
+selected_tree.column("Y", anchor=tk.W, width=40)
+selected_tree.column("Radius", anchor=tk.W, width=45)
+selected_tree.column("Position", anchor=tk.W, width=50)
+
+selected_tree.heading("#0", text="", anchor=tk.W)
+selected_tree.heading("ID", text="ID", anchor=tk.W)
+selected_tree.heading("X", text="X", anchor=tk.W)
+selected_tree.heading("Y", text="Y", anchor=tk.W)
+selected_tree.heading("Radius", text="Radius", anchor=tk.W)
+selected_tree.heading("Position", text="Position", anchor=tk.W)
+selected_tree.grid(row=1, column=0, columnspan=3, padx=10, pady=10, sticky='ew')
+
 
 city_info_frame = tk.LabelFrame(root, text="City information", padx=5, pady=5)
 city_info_frame.grid(row=0, column=2, padx=5, pady=5, sticky="s")
@@ -265,7 +308,6 @@ city_tree.heading("ID", text="ID", anchor=tk.W)
 city_tree.heading("X", text="X", anchor=tk.W)
 city_tree.heading("Y", text="Y", anchor=tk.W)
 city_tree.heading("Radius", text="Radius", anchor=tk.W)
-
 city_tree.grid(row=0, column=0, columnspan=3, padx=10, pady=13, sticky='nw')
 
 stations_count_frame = tk.LabelFrame(root, text="Stations Count & Radius", padx=5, pady=5)
