@@ -31,7 +31,7 @@ def update_outside_city(*args):
     try:
         inside_val = percentage_in_city_var.get()
         if not 0 <= inside_val <= 100:
-            percentage_in_city_var.set(min(max(0, inside_val), 100))  # корректируем значение в допустимый диапазон
+            percentage_in_city_var.set(min(max(0, inside_val), 100))
             return
         outside_val = 100 - inside_val
         percentage_outside_var.set(outside_val)
@@ -72,29 +72,44 @@ def highlight_station(idx):
     # Highlight the station on the canvas
     station = base_stations[idx]
     x, y, radius = station["x"], station["y"], station["radius"]
-    canvas.create_oval(x - radius, y - radius, x + radius, y + radius, outline='yellow', width=4, tags="highlight")
-
+    canvas.create_oval(x - radius, y - radius, x + radius, y + radius, outline='yellow', width=4, tags="highlight_{}".format(station["id"]))
+    # Check and highlight in the main station list ('tree')
     for i in tree.get_children():
         if tree.item(i)['values'][0] == station["id"]:
-            tree.selection_set(i)  # This highlights the row
-            tree.see(i)  # This ensures the row is visible
+            tree.selection_set(i)  # This highlights the row in 'tree'
+            tree.see(i)  # This ensures the row is visible in 'tree'
             break
-
-    # Check if station is already in the selected stations list to avoid duplicates
-    existing_ids = [selected_tree.item(child)["values"][0] for child in selected_tree.get_children()]
-    if station["id"] not in existing_ids:
-        # Add the selected station's data to the new Treeview
-        new_item = selected_tree.insert("", tk.END, values=(station["id"], round(x), round(y), radius, station["position"]))
-        selected_tree.focus(new_item)
-        selected_tree.selection_set(new_item)
-        selected_tree.see(new_item)
-
-
+    # Check and highlight in the selected station list ('selected_tree')
+    for i in selected_tree.get_children():
+        if selected_tree.item(i)['values'][0] == station["id"]:
+            selected_tree.selection_set(i)  # This highlights the row in 'selected_tree'
+            selected_tree.see(i)  # This ensures the row is visible in 'selected_tree'
+            return  # If found, no need to add it again
+    # If station is not found in the selected stations list, add it
+    new_item = selected_tree.insert("", tk.END, values=(station["id"], round(x), round(y), radius, station["position"]))
+    selected_tree.focus(new_item)
+    selected_tree.selection_set(new_item)
+    selected_tree.see(new_item)
 
 def clear_highlight():
     '''Clear the highlighted station on the canvas and deselect any row in the table.'''
     canvas.delete("highlight")
     tree.selection_remove(tree.selection())
+
+def remove_highlight_by_id(station_id):
+    # Remove the highlight from the canvas by the station's ID
+    for idx, station in enumerate(base_stations):
+        if station["id"] == station_id:
+            canvas.delete("highlight_{}".format(station_id))
+            break
+
+def delete_selected_station():
+    selected_item = selected_tree.selection()
+    if selected_item:
+        item_values = selected_tree.item(selected_item)["values"]   # Get the item's values which contains the station ID as the first element
+        station_id = item_values[0]
+        remove_highlight_by_id(station_id)  # Remove the highlight for this station
+        selected_tree.delete(selected_item)  # Remove the item from the tree
 
 def find_station():
     station_id = station_id_entry_var.get()
@@ -213,6 +228,9 @@ def draw_random_points():
     for i in tree.get_children():
             tree.delete(i)
 
+    for item in selected_tree.get_children():
+        selected_tree.delete(item)
+
     for idx, (x, y) in enumerate(existing_points):
             # Writing base station information to the list
         canvas.create_text(x, y - 10, text=str(idx), font=("Arial", 10), fill='black', tags="base_station")
@@ -272,8 +290,11 @@ station_id_entry_var = tk.StringVar()
 tk.Label(selected_bts_info_frame, text="Station ID:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
 station_id_entry = tk.Entry(selected_bts_info_frame, textvariable=station_id_entry_var, width=10)
 station_id_entry.grid(row=0, column=1, padx=5, pady=5)
-find_button = tk.Button(selected_bts_info_frame, text="Find", command=find_station)
+find_button = tk.Button(selected_bts_info_frame, text="   Find    ", command=find_station)
 find_button.grid(row=0, column=2, padx=5, pady=5)
+
+delete_button = tk.Button(selected_bts_info_frame, text="Delete BTS", command=delete_selected_station)
+delete_button.grid(row=2, column=1, padx=5, pady=5, sticky="nsew")
 
 selected_tree = ttk.Treeview(selected_bts_info_frame, height=3)
 selected_tree["columns"] = ("ID", "X", "Y", "Radius", "Position")
