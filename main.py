@@ -93,8 +93,19 @@ def highlight_station(idx):
 
 def clear_highlight():
     '''Clear the highlighted station on the canvas and deselect any row in the table.'''
-    canvas.delete("highlight")
+    all_items = canvas.find_all()
+    for item in all_items:
+        tags = canvas.gettags(item)
+        for tag in tags:
+            if 'highlight_' in tag:
+                canvas.delete(item)
+                break
+    # Deselect in both tree views
     tree.selection_remove(tree.selection())
+    selected_tree.selection_remove(selected_tree.selection())
+
+    for item in selected_tree.get_children():
+        selected_tree.delete(item)
 
 def remove_highlight_by_id(station_id):
     # Remove the highlight from the canvas by the station's ID
@@ -379,7 +390,7 @@ tk.Entry(city_radius_frame, textvariable=max_city_radius_var, width=5).grid(row=
 
 controls_frame = tk.LabelFrame(root, text="Controls", padx=5, pady=5)
 controls_frame.grid(row=2, column=2, padx=5, pady=5, sticky="n")
-clear_highlight_btn = tk.Button(controls_frame, text="Clear Highlight", command=clear_highlight)
+clear_highlight_btn = tk.Button(controls_frame, text="Clear Selected BTS", command=clear_highlight)
 clear_highlight_btn.grid(row=1, column=0, pady=5, padx=5)
 tk.Checkbutton(controls_frame, text="Keep cities on map", variable=keep_cities_var).grid(row=0, column=0, pady=5, padx=5)
 tk.Button(controls_frame, text="\n          Apply          \n", command=draw_random_points, activebackground='blue', activeforeground='white', relief='raised', bd=5).grid(row=2, column=0, pady=5, padx=5)
