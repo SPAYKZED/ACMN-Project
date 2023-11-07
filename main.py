@@ -79,17 +79,20 @@ def highlight_station(idx):
             tree.selection_set(i)  # This highlights the row in 'tree'
             tree.see(i)  # This ensures the row is visible in 'tree'
             break
-    # Check and highlight in the selected station list ('selected_tree')
+    # Check if the station is already in the selected station list ('selected_tree')
     for i in selected_tree.get_children():
         if selected_tree.item(i)['values'][0] == station["id"]:
             selected_tree.selection_set(i)  # This highlights the row in 'selected_tree'
             selected_tree.see(i)  # This ensures the row is visible in 'selected_tree'
+            # Move the selected station to the beginning of the 'selected_tree'
+            selected_tree.move(i, selected_tree.parent(i), 0)
             return  # If found, no need to add it again
     # If station is not found in the selected stations list, add it
-    new_item = selected_tree.insert("", tk.END, values=(station["id"], round(x), round(y), radius, station["position"]))
+    new_item = selected_tree.insert("", 0, values=(station["id"], round(x), round(y), radius, station["position"]))
     selected_tree.focus(new_item)
     selected_tree.selection_set(new_item)
     selected_tree.see(new_item)
+
 
 def clear_highlight():
     '''Clear the highlighted station on the canvas and deselect any row in the table.'''
@@ -147,9 +150,15 @@ def draw_random_points():
     # Gathering and preparing city parameters
     min_cities = int(min_cities_var.get())
     max_cities = int(max_cities_var.get())
+    if min_cities > max_cities:
+        tk.messagebox.showerror("Error", "Minimum number of cities cannot be greater than the maximum number.")
+        return
     num_cities = random.randint(min_cities, max_cities)
     min_city_radius = int(min_city_radius_var.get())
     max_city_radius = int(max_city_radius_var.get())
+    if min_city_radius > max_city_radius:
+        tk.messagebox.showerror("Error", "Minimum city radius cannot be greater than the maximum city radius.")
+        return
 
     # Checking if cities should be retained or drawn a new
     if not keep_cities_var.get() or not city_centers:
@@ -203,7 +212,7 @@ def draw_random_points():
                 y = cy + distance_from_center * math.sin(angle)
 
                 # Ensure this base station doesn't overlap with other base stations
-                if not are_points_within_range(x, y, existing_points, 0, 1.4 * circle_radius_in_city):
+                if not are_points_within_range(x, y, existing_points, 0, inside_multiplier_var.get() * circle_radius_in_city):
                     existing_points.append((x, y))
                     base_stations.append({"id": len(base_stations), "x": x, "y": y, "radius": circle_radius_in_city, "position": "IN"})
                     canvas.create_oval(x, y, x + 3, y + 3, fill='black', tags="base_station")
@@ -221,7 +230,7 @@ def draw_random_points():
             y = random.randint(10 + circle_radius_outside, 10 + SQUARE_SIZE - circle_radius_outside)
 
             # Ensure this base station doesn't overlap with cities or other base stations
-            if not any(are_points_within_range(x, y, [(cx, cy)], cr) for cx, cy, cr in city_centers) and not are_points_within_range(x, y, existing_points, 0, 1.4 * circle_radius_outside):
+            if not any(are_points_within_range(x, y, [(cx, cy)], cr) for cx, cy, cr in city_centers) and not are_points_within_range(x, y, existing_points, 0, outside_multiplier_var.get() * circle_radius_outside):
                 existing_points.append((x, y))
                 base_stations.append({"id": len(base_stations), "x": x, "y": y, "radius": circle_radius_outside, "position": "OUT"})
                 canvas.create_oval(x, y, x + 3, y + 3, fill='blue', tags="base_station")
@@ -266,13 +275,14 @@ min_radius_outside_var = tk.IntVar(value=25)
 max_radius_outside_var = tk.IntVar(value=25)
 min_cities_var = tk.IntVar(value=2)
 max_cities_var = tk.IntVar(value=5)
+inside_multiplier_var = tk.DoubleVar(value=1.4)
 min_city_radius_var = tk.IntVar(value=80)
 max_city_radius_var = tk.IntVar(value=125)
+outside_multiplier_var = tk.DoubleVar(value=1.4)
 percentage_in_city_var = tk.IntVar(value=80)
 percentage_outside_var = tk.IntVar(value=20)
 percentage_in_city_var.trace("w", update_outside_city)
 keep_cities_var = tk.BooleanVar()
-
 
 bts_info_frame = tk.LabelFrame(root, text="Info on all BTS", padx=5, pady=5)
 bts_info_frame.grid(row=0, column=3, rowspan=3, padx=5, pady=5, sticky="new")
@@ -285,7 +295,6 @@ tree.column("X", anchor=tk.W, width=40)
 tree.column("Y", anchor=tk.W, width=40)
 tree.column("Radius", anchor=tk.W, width=45)
 tree.column("Position", anchor=tk.W, width=50)
-
 tree.heading("#0", text="", anchor=tk.W)
 tree.heading("ID", text="ID", anchor=tk.W)
 tree.heading("X", text="X", anchor=tk.W)
@@ -294,6 +303,9 @@ tree.heading("Radius", text="Radius", anchor=tk.W)
 tree.heading("Position", text="Position", anchor=tk.W)
 tree.grid(row=1, column=0, columnspan=3, padx=10, pady=13, sticky='ew')
 
+bts_info_scrollbar = tk.Scrollbar(bts_info_frame, orient="vertical", command=tree.yview)
+bts_info_scrollbar.grid(row=1, column=4, sticky='ns')
+tree.configure(yscrollcommand=bts_info_scrollbar.set)
 
 selected_bts_info_frame = tk.LabelFrame(root, text="Selected BTS Info", padx=5, pady=5)
 selected_bts_info_frame.grid(row=2, column=1, padx=5, pady=5, sticky="nsew")
@@ -324,24 +336,6 @@ selected_tree.heading("Radius", text="Radius", anchor=tk.W)
 selected_tree.heading("Position", text="Position", anchor=tk.W)
 selected_tree.grid(row=1, column=0, columnspan=3, padx=10, pady=10, sticky='ew')
 
-
-city_info_frame = tk.LabelFrame(root, text="City information", padx=5, pady=5)
-city_info_frame.grid(row=0, column=2, padx=5, pady=5, sticky="s")
-city_tree = ttk.Treeview(city_info_frame, height=2)
-city_tree["columns"] = ("ID", "X", "Y", "Radius")
-city_tree.column("#0", width=0, stretch=tk.NO)
-city_tree.column("ID", anchor=tk.W, width=30)
-city_tree.column("X", anchor=tk.W, width=30)
-city_tree.column("Y", anchor=tk.W, width=30)
-city_tree.column("Radius", anchor=tk.W, width=45)
-
-city_tree.heading("#0", text="", anchor=tk.W)
-city_tree.heading("ID", text="ID", anchor=tk.W)
-city_tree.heading("X", text="X", anchor=tk.W)
-city_tree.heading("Y", text="Y", anchor=tk.W)
-city_tree.heading("Radius", text="Radius", anchor=tk.W)
-city_tree.grid(row=0, column=0, columnspan=3, padx=10, pady=13, sticky='nw')
-
 stations_count_frame = tk.LabelFrame(root, text="Stations Count & Radius", padx=5, pady=5)
 stations_count_frame.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
 tk.Label(stations_count_frame, text="COUNT:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
@@ -357,12 +351,23 @@ min_radius_in_city_scale.grid(row=0, column=1, padx=5, pady=5)
 tk.Label(in_city_frame, text="MAX RADIUS:\n[ Km ]").grid(row=1, column=0, sticky="e", padx=5, pady=5)
 max_radius_in_city_scale = tk.Scale(in_city_frame, from_=0, to=50, orient=tk.HORIZONTAL, variable=max_radius_in_city_var, command=lambda x: update_scales(min_radius_in_city_scale, max_radius_in_city_scale))
 max_radius_in_city_scale.grid(row=1, column=1, padx=5, pady=5)
+
+inside_multiplier_label = tk.Label(in_city_frame, text="Multiplier:")
+inside_multiplier_label.grid(row=2, column=0, sticky="e", padx=5, pady=5)
+inside_multiplier_spinbox = tk.Spinbox(in_city_frame, from_=1, to=2, width=3, increment=0.1, textvariable=inside_multiplier_var)
+inside_multiplier_spinbox.grid(row=2, column=1, padx=5, pady=5)
+
 tk.Label(outside_city_frame, text="MIN RADIUS:\n[ Km ]").grid(row=0, column=0, sticky="e", padx=5, pady=5)
 min_radius_outside_city_scale = tk.Scale(outside_city_frame, from_=0, to=50, orient=tk.HORIZONTAL, variable=min_radius_outside_var, command=lambda x: update_scales(min_radius_outside_city_scale, max_radius_outside_city_scale))
 min_radius_outside_city_scale.grid(row=0, column=1, padx=5, pady=5)
 tk.Label(outside_city_frame, text="MAX RADIUS:\n[ Km ]").grid(row=1, column=0, sticky="e", padx=5, pady=5)
 max_radius_outside_city_scale = tk.Scale(outside_city_frame, from_=0, to=50, orient=tk.HORIZONTAL, variable=max_radius_outside_var, command=lambda x: update_scales(min_radius_outside_city_scale, max_radius_outside_city_scale))
 max_radius_outside_city_scale.grid(row=1, column=1, padx=5, pady=5)
+
+inside_multiplier_label = tk.Label(outside_city_frame, text="Multiplier:")
+inside_multiplier_label.grid(row=2, column=0, sticky="e", padx=5, pady=5)
+inside_multiplier_spinbox = tk.Spinbox(outside_city_frame, from_=1, to=2, width=3, increment=0.1, textvariable=outside_multiplier_var)
+inside_multiplier_spinbox.grid(row=2, column=1, padx=5, pady=5)
 
 stations_percent_frame = tk.LabelFrame(root, text="Stations Percentage", padx=5, pady=5)
 stations_percent_frame.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
@@ -387,6 +392,22 @@ tk.Label(city_radius_frame, text="MIN [ Km ]:").grid(row=0, column=0, sticky="e"
 tk.Entry(city_radius_frame, textvariable=min_city_radius_var, width=5).grid(row=0, column=1, padx=5, pady=5)
 tk.Label(city_radius_frame, text="MAX [ Km ]:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
 tk.Entry(city_radius_frame, textvariable=max_city_radius_var, width=5).grid(row=1, column=1, padx=5, pady=5)
+
+city_info_frame = tk.LabelFrame(cities_frame, text="City information", padx=5, pady=5)
+city_info_frame.grid(row=2, column=0, padx=5, pady=5, sticky="n")
+city_tree = ttk.Treeview(city_info_frame, height=2)
+city_tree["columns"] = ("ID", "X", "Y", "Radius")
+city_tree.column("#0", width=0, stretch=tk.NO)
+city_tree.column("ID", anchor=tk.W, width=30)
+city_tree.column("X", anchor=tk.W, width=30)
+city_tree.column("Y", anchor=tk.W, width=30)
+city_tree.column("Radius", anchor=tk.W, width=45)
+city_tree.heading("#0", text="", anchor=tk.W)
+city_tree.heading("ID", text="ID", anchor=tk.W)
+city_tree.heading("X", text="X", anchor=tk.W)
+city_tree.heading("Y", text="Y", anchor=tk.W)
+city_tree.heading("Radius", text="Radius", anchor=tk.W)
+city_tree.grid(row=0, column=0, columnspan=3, padx=10, pady=13, sticky='nw')
 
 controls_frame = tk.LabelFrame(root, text="Controls", padx=5, pady=5)
 controls_frame.grid(row=2, column=2, padx=5, pady=5, sticky="n")
