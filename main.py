@@ -10,6 +10,7 @@ SQUARE_SIZE = 775
 city_centers = []
 base_stations = []
 
+# Initialize Tkinter root
 root = tk.Tk()
 root.title("Mobile Network Base Stations")
 screen_width = root.winfo_screenwidth()
@@ -17,10 +18,11 @@ screen_height = root.winfo_screenheight()
 root.geometry(f"{screen_width}x{screen_height}")
 canvas = tk.Canvas(root, bg='white', width=795, height=795)
 
+# Load and resize images
 img = Image.open("C:\\Python\\Project_ACMN\\map_bg.png").resize((SQUARE_SIZE, SQUARE_SIZE))
 img_tk = ImageTk.PhotoImage(img)
 ph_station = tk.PhotoImage(file='station.png')
-root.iconphoto(False,ph_station)
+root.iconphoto(False, ph_station)
 city_icon = Image.open("C:\\Python\\Project_ACMN\\city1.png").resize((30, 30))
 city_icon_tk = ImageTk.PhotoImage(city_icon)
 canvas.grid(row=0, column=0, rowspan=22)
@@ -72,19 +74,18 @@ def highlight_station(idx):
     # Highlight the station on the canvas
     station = base_stations[idx]
     x, y, radius = station["x"], station["y"], station["radius"]
-    canvas.create_oval(x - radius, y - radius, x + radius, y + radius, outline='yellow', width=4, tags="highlight_{}".format(station["id"]))
+    canvas.create_oval(x - radius, y - radius, x + radius, y + radius, outline='yellow', width=4, tags=("zoomable","highlight_{}".format(station["id"])))
     # Check and highlight in the main station list ('tree')
     for i in tree.get_children():
         if tree.item(i)['values'][0] == station["id"]:
             tree.selection_set(i)  # This highlights the row in 'tree'
             tree.see(i)  # This ensures the row is visible in 'tree'
             break
-    # Check if the station is already in the selected station list ('selected_tree')
+
     for i in selected_tree.get_children():
         if selected_tree.item(i)['values'][0] == station["id"]:
-            selected_tree.selection_set(i)  # This highlights the row in 'selected_tree'
-            selected_tree.see(i)  # This ensures the row is visible in 'selected_tree'
-            # Move the selected station to the beginning of the 'selected_tree'
+            selected_tree.selection_set(i)
+            selected_tree.see(i)
             selected_tree.move(i, selected_tree.parent(i), 0)
             return  # If found, no need to add it again
     # If station is not found in the selected stations list, add it
@@ -92,7 +93,6 @@ def highlight_station(idx):
     selected_tree.focus(new_item)
     selected_tree.selection_set(new_item)
     selected_tree.see(new_item)
-
 
 def clear_highlight():
     '''Clear the highlighted station on the canvas and deselect any row in the table.'''
@@ -138,14 +138,25 @@ def find_station():
     else:
         tk.messagebox.showwarning("Warning", "Please enter a valid station ID.")
 
+def zoom(event):
+    x = canvas.canvasx(event.x)
+    y = canvas.canvasy(event.y)
+    factor = 1.1 if event.delta > 0 else 0.9
+
+    # Only scale items with the 'zoomable' tag, not the background/frame
+    canvas.scale("zoomable", x, y, factor, factor)
+canvas.bind("<MouseWheel>", zoom)
+
+
 def draw_random_points():
     #Draws random base stations and cities on the canvas based on user parameters.
 
     canvas.delete("base_station")
     canvas.delete("highlight")
     base_stations.clear()
-    canvas.create_rectangle(5, 5, 790, 790, fill='white', width=5)
-    canvas.create_image(10, 10, anchor=tk.NW, image=img_tk, tags="background")
+
+    canvas.create_rectangle(5, 5, 790, 790, fill='white', width=5, tags="static")
+    canvas.create_image(10, 10, anchor=tk.NW, image=img_tk, tags="static")
 
     # Gathering and preparing city parameters
     min_cities = int(min_cities_var.get())
@@ -183,9 +194,9 @@ def draw_random_points():
 
         # Drawing the city centers and borders on the canvas
         for i, (cx, cy, cradius) in enumerate(city_centers):
-            canvas.create_text(cx, cy - 18, text=chr(65 + i), font=("Arial", 14, "bold"), fill='red')
-            canvas.create_image(cx, cy, image=city_icon_tk, tags="city")
-            canvas.create_oval(cx - cradius, cy - cradius, cx + cradius, cy + cradius, outline='red', width=3, tags="city")
+            canvas.create_text(cx, cy - 18, text=chr(65 + i), font=("Arial", 14, "bold"), fill='red',tags=("city", "zoomable"))
+            canvas.create_image(cx, cy, image=city_icon_tk, tags=("city", "zoomable"))
+            canvas.create_oval(cx - cradius, cy - cradius, cx + cradius, cy + cradius, outline='red', width=3, tags=("city", "zoomable"))
 
     existing_points = []    # List to store the locations of base stations to prevent overlap
     num_points = int(num_points_var.get())
@@ -215,8 +226,8 @@ def draw_random_points():
                 if not are_points_within_range(x, y, existing_points, 0, inside_multiplier_var.get() * circle_radius_in_city):
                     existing_points.append((x, y))
                     base_stations.append({"id": len(base_stations), "x": x, "y": y, "radius": circle_radius_in_city, "position": "IN"})
-                    canvas.create_oval(x, y, x + 3, y + 3, fill='black', tags="base_station")
-                    canvas.create_oval(x - circle_radius_in_city, y - circle_radius_in_city, x + circle_radius_in_city, y + circle_radius_in_city, outline='black', width=2, tags="base_station")
+                    canvas.create_oval(x-1, y-1, x+1, y+1, fill='black', tags=("base_station", "zoomable"))
+                    canvas.create_oval(x - circle_radius_in_city, y - circle_radius_in_city, x + circle_radius_in_city, y + circle_radius_in_city, outline='black', width=2, tags=("base_station", "zoomable"))
                     break
                 tries += 1
 
@@ -233,16 +244,16 @@ def draw_random_points():
             if not any(are_points_within_range(x, y, [(cx, cy)], cr) for cx, cy, cr in city_centers) and not are_points_within_range(x, y, existing_points, 0, outside_multiplier_var.get() * circle_radius_outside):
                 existing_points.append((x, y))
                 base_stations.append({"id": len(base_stations), "x": x, "y": y, "radius": circle_radius_outside, "position": "OUT"})
-                canvas.create_oval(x, y, x + 3, y + 3, fill='blue', tags="base_station")
-                canvas.create_oval(x - circle_radius_outside, y - circle_radius_outside, x + circle_radius_outside, y + circle_radius_outside, outline='blue', width=2, tags="base_station")
+                canvas.create_oval(x-1, y-1, x+1, y+1, fill='blue', tags=("base_station", "zoomable"))
+                canvas.create_oval(x - circle_radius_outside, y - circle_radius_outside, x + circle_radius_outside, y + circle_radius_outside, outline='blue', width=2, tags=("base_station", "zoomable"))
                 break
             tries += 1
 
     # Redraw the cities on the canvas
     for i, (cx, cy, cradius) in enumerate(city_centers):
-        canvas.create_text(cx, cy - 18, text=chr(65 + i), font=("Arial", 14, "bold"), fill='red', tags="city")
-        canvas.create_image(cx, cy, image=city_icon_tk, tags="city")
-        canvas.create_oval(cx - cradius, cy - cradius, cx + cradius, cy + cradius, outline='red', width=3, tags="city")
+        canvas.create_text(cx, cy - 18, text=chr(65 + i), font=("Arial", 14, "bold"), fill='red', tags=("city","zoomable"))
+        canvas.create_image(cx, cy, image=city_icon_tk, tags=("city","zoomable"))
+        canvas.create_oval(cx - cradius, cy - cradius, cx + cradius, cy + cradius, outline='red', width=3, tags=("city","zoomable"))
 
     # Clearing previous records in the table
     for i in tree.get_children():
@@ -253,7 +264,7 @@ def draw_random_points():
 
     for idx, (x, y) in enumerate(existing_points):
             # Writing base station information to the list
-        canvas.create_text(x, y - 10, text=str(idx), font=("Arial", 10), fill='black', tags="base_station")
+        canvas.create_text(x, y - 10, text=str(idx), font=("Arial", 10), fill='black', tags=("base_station","zoomable"))
 
     for station in base_stations:
         x = station["x"]
