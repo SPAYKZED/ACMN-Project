@@ -26,7 +26,8 @@ root.iconphoto(False, ph_station)
 city_icon = Image.open("C:\\Python\\Project_ACMN\\city1.png").resize((30, 30))
 city_icon_tk = ImageTk.PhotoImage(city_icon)
 canvas.grid(row=0, column=0, rowspan=22)
-
+canvas.create_rectangle(5, 5, 790, 790, fill='white', width=5, tags="static")
+canvas.create_image(10, 10, anchor=tk.NW, image=img_tk, tags="static")
 
 def update_outside_city(*args):
     ''' Updating the percentage of stations outside of the city.'''
@@ -138,25 +139,62 @@ def find_station():
     else:
         tk.messagebox.showwarning("Warning", "Please enter a valid station ID.")
 
+current_zoom = 1.0
+# Constants to define the min and max zoom levels
+MIN_ZOOM_LEVEL = 1.0
+MAX_ZOOM_LEVEL = 7.0  # Adjust as needed
 def zoom(event):
-    x = canvas.canvasx(event.x)
-    y = canvas.canvasy(event.y)
-    factor = 1.1 if event.delta > 0 else 0.9
+    global current_zoom
+    scale_factor = 1.1
+    if event.delta > 0:  # scroll up, zoom in
+        new_zoom = current_zoom * scale_factor
+        if new_zoom < MAX_ZOOM_LEVEL:
+            canvas.scale("zoomable", event.x, event.y, scale_factor, scale_factor)
+            current_zoom = new_zoom
+    elif event.delta < 0:  # scroll down, zoom out
+        new_zoom = current_zoom / scale_factor
+        if new_zoom <= MIN_ZOOM_LEVEL:
+            # If new zoom level is at or below minimum, reset to exactly 1.0
+            reset_scale = 1.0 / current_zoom
+            canvas.scale("zoomable", event.x, event.y, reset_scale, reset_scale)
+            current_zoom = 1.0
+        else:
+            canvas.scale("zoomable", event.x, event.y, 1/scale_factor, 1/scale_factor)
+            current_zoom = new_zoom
 
-    # Only scale items with the 'zoomable' tag, not the background/frame
-    canvas.scale("zoomable", x, y, factor, factor)
 canvas.bind("<MouseWheel>", zoom)
+last_drag_position = None
+
+def start_pan(event):
+    global last_drag_position
+    last_drag_position = (event.x, event.y)
+def do_pan(event):
+    global last_drag_position
+    dx = event.x - last_drag_position[0]
+    dy = event.y - last_drag_position[1]
+    canvas.move("zoomable", dx, dy)
+    last_drag_position = (event.x, event.y)
+def end_pan(event):
+    global last_drag_position
+    last_drag_position = None
+
+canvas.bind("<ButtonPress-3>", start_pan)
+canvas.bind("<B3-Motion>", do_pan)
+canvas.bind("<ButtonRelease-3>", end_pan)
 
 
 def draw_random_points():
     #Draws random base stations and cities on the canvas based on user parameters.
-
     canvas.delete("base_station")
-    canvas.delete("highlight")
+    canvas.delete("city")
+    clear_highlight()
     base_stations.clear()
-
-    canvas.create_rectangle(5, 5, 790, 790, fill='white', width=5, tags="static")
-    canvas.create_image(10, 10, anchor=tk.NW, image=img_tk, tags="static")
+    global current_zoom
+    if current_zoom != 1.0:
+        # Calculate the inverse of the current zoom to reset it
+        reset_scale = 1.0 / current_zoom
+        canvas.scale("zoomable", 0, 0, reset_scale, reset_scale)
+        current_zoom = 1.0
 
     # Gathering and preparing city parameters
     min_cities = int(min_cities_var.get())
@@ -170,6 +208,7 @@ def draw_random_points():
     if min_city_radius > max_city_radius:
         tk.messagebox.showerror("Error", "Minimum city radius cannot be greater than the maximum city radius.")
         return
+
 
     # Checking if cities should be retained or drawn a new
     if not keep_cities_var.get() or not city_centers:
