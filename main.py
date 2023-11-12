@@ -4,12 +4,13 @@ import random
 import tkinter.messagebox
 import math
 from PIL import Image, ImageTk
+import json
+import tkinter.filedialog
 
 # Initial parameters
 SQUARE_SIZE = 775
 city_centers = []
 base_stations = []
-
 
 # Initialize Tkinter root
 root = tk.Tk()
@@ -183,6 +184,73 @@ canvas.bind("<ButtonPress-3>", start_pan)
 canvas.bind("<B3-Motion>", do_pan)
 canvas.bind("<ButtonRelease-3>", end_pan)
 
+
+def save_configuration_as():
+    filename = tk.filedialog.asksaveasfilename(
+        defaultextension=".json",
+        filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+        title="Save Configuration As..."
+    )
+    if filename:
+        try:
+            config = {
+                'cities': city_centers,
+                'stations': base_stations,
+                'selected_scale': scale_selection_var.get()
+            }
+            with open(filename, 'w') as f:
+                json.dump(config, f, indent=4)
+            tk.messagebox.showinfo("Save Configuration", "Configuration saved successfully.")
+        except Exception as e:
+            tk.messagebox.showerror("Save Configuration", f"An error occurred while saving: {e}")
+
+def load_configuration():
+    filename = tk.filedialog.askopenfilename(
+        filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+        title="Load Configuration"
+    )
+    if filename:
+        try:
+            with open(filename, 'r') as f:
+                config = json.load(f)
+                global city_centers, base_stations
+                city_centers = config['cities']
+                base_stations = config['stations']
+                scale_selection_var.set(config.get('selected_scale', '77500m'))
+                on_scale_select(None)  # Update the scale based on the loaded configuration
+                draw_from_loaded_data()
+        except FileNotFoundError:
+            tk.messagebox.showwarning("Load Configuration", "No configuration file found.")
+        except json.JSONDecodeError:
+            tk.messagebox.showerror("Load Configuration", "Configuration file is corrupted.")
+        except Exception as e:
+            tk.messagebox.showerror("Load Configuration", f"An error occurred while loading: {e}")
+
+def draw_from_loaded_data():
+    # Clear the canvas first
+    canvas.delete("city")
+    canvas.delete("base_station")
+    clear_highlight()
+
+    for i in tree.get_children():
+        tree.delete(i)
+    for i in city_tree.get_children():
+        city_tree.delete(i)
+
+    # Draw the cities
+    for i, (cx, cy, cradius) in enumerate(city_centers):
+        canvas.create_text(cx, cy - 18, text=chr(65 + i), font=("Arial", 14, "bold"), fill='red', tags=("city","zoomable"))
+        canvas.create_image(cx, cy, image=city_icon_tk, tags=("city","zoomable"))
+        canvas.create_oval(cx - cradius, cy - cradius, cx + cradius, cy + cradius, outline='red', width=3, tags=("city","zoomable"))
+        city_tree.insert("", tk.END, values=(chr(65 + i), round(cx), round(cy), round(cradius * meters_per_pixel)))
+
+    # Draw the base stations
+    for station in base_stations:
+        idx, x, y, radius, position = station['id'], station['x'], station['y'], station['radius'],station["position"]
+        color = 'black' if position == 'IN' else 'blue'
+        canvas.create_oval(x - radius, y - radius, x + radius, y + radius, outline=color, width=2, tags=("base_station", "zoomable"))
+        canvas.create_text(x, y - 10, text=str(idx), font=("Arial", 10), fill='black', tags=("base_station", "zoomable"))
+        tree.insert("", tk.END, values=(idx, round(x), round(y), round(station["radius"] * meters_per_pixel), position))
 
 def draw_random_points():
     #Draws random base stations and cities on the canvas based on user parameters.
@@ -363,6 +431,7 @@ def get_scale_value():
     return scale_options[selected_scale]
 def on_scale_select(event):
     selected_scale = scale_selection_var.get()
+    global meters_per_pixel
     meters_per_pixel = 1/scale_options[selected_scale]
     scale_var.set(f"Scale:\n {selected_scale} * {selected_scale}\nMeters per pixel: {meters_per_pixel}")
 
@@ -502,6 +571,13 @@ clear_highlight_btn = tk.Button(controls_frame, text="Clear Selected BTS", comma
 clear_highlight_btn.grid(row=1, column=0, pady=5, padx=5,sticky="news")
 tk.Checkbutton(controls_frame, text="Keep cities on map", variable=keep_cities_var).grid(row=0, column=0, pady=5, padx=5,sticky="news")
 tk.Button(controls_frame, text="\n          Apply          \n", command=draw_random_points, activebackground='blue', activeforeground='white', relief='raised', bd=5).grid(row=2, column=0, pady=5, padx=5,sticky="ew")
+
+file_frame = tk.LabelFrame(root, text="File Configuration", padx=5, pady=5)
+file_frame.grid(row=2, column=3, padx=5, pady=5)
+save_button = tk.Button(file_frame, text="Save Configuration", command=save_configuration_as)
+save_button.grid(row=0, column=0, pady=5, padx=5,sticky="ew")
+load_button = tk.Button(file_frame, text="Load Configuration", command=load_configuration)
+load_button.grid(row=1, column=0, pady=5, padx=5,sticky="ew")
 
 draw_random_points()
 root.mainloop()
