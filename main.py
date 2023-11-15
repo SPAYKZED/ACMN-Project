@@ -1,33 +1,43 @@
 import tkinter as tk
-from tkinter import ttk
-import random
-import tkinter.messagebox
-import math
+from tkinter import ttk, messagebox, filedialog
 from PIL import Image, ImageTk
+import random
+import math
 import json
-import tkinter.filedialog
 
-# Initial parameters
+# Constants
 SQUARE_SIZE = 775
+IMG_PATH = "C:\\Python\\Project_ACMN\\"
+MAP_BG_FILENAME = "map_bg.png"
+STATION_IMG_FILENAME = 'station.png'
+CITY_IMG_FILENAME = "city1.png"
+SCALE_OPTIONS = {
+    '77500m': 775 / 77500,
+    '155000m': 775 / 155000,
+    '38750m': 775 / 38750
+}
+
+# Data
 city_centers = []
 base_stations = []
 
 # Initialize Tkinter root
 root = tk.Tk()
-root.title("Mobile Network Base Stations")
+root.title("Adjacent Cells in Mobile Networks")
 screen_width = root.winfo_screenwidth()
 screen_height = root.winfo_screenheight()
 root.geometry(f"{screen_width}x{screen_height}")
 canvas = tk.Canvas(root, bg='white', width=795, height=795)
+canvas.grid(row=0, column=0, rowspan=22)
 
 # Load and resize images
-img = Image.open("C:\\Python\\Project_ACMN\\map_bg.png").resize((SQUARE_SIZE, SQUARE_SIZE))
+img = Image.open(IMG_PATH + MAP_BG_FILENAME).resize((SQUARE_SIZE, SQUARE_SIZE))
 img_tk = ImageTk.PhotoImage(img)
-ph_station = tk.PhotoImage(file='station.png')
+ph_station = tk.PhotoImage(file=IMG_PATH + STATION_IMG_FILENAME)
 root.iconphoto(False, ph_station)
-city_icon = Image.open("C:\\Python\\Project_ACMN\\city1.png").resize((30, 30))
+city_icon = Image.open(IMG_PATH + CITY_IMG_FILENAME).resize((30, 30))
 city_icon_tk = ImageTk.PhotoImage(city_icon)
-canvas.grid(row=0, column=0, rowspan=22)
+
 canvas.create_rectangle(5, 5, 790, 790, fill='white', width=5, tags="static")
 canvas.create_image(10, 10, anchor=tk.NW, image=img_tk, tags="static")
 
@@ -54,15 +64,13 @@ def update_scales(min_scale, max_scale):
 def are_points_within_range(x, y, points, min_distance, max_distance=None):
     '''This function checks if a given point (x, y) is within a certain distance range of any points from the list.'''
     for point in points:
-        px, py = point[:2]  # Extract the x and y coordinates of the point
-        distance = ((x - px) ** 2 + (y - py) ** 2) ** 0.5  # Calculate Euclidean distance
-        # If max_distance is provided, check if the point is within the min and max range. Otherwise, check if it's less than min_distance.
-        if max_distance:
+        px, py = point[:2]
+        distance = math.hypot(x - px, y - py)  # More efficient calculation
+        if max_distance is not None:
             if min_distance <= distance <= max_distance:
                 return True
-        else:
-            if distance < min_distance:
-                return True
+        elif distance < min_distance:
+            return True
     return False
 
 def on_canvas_click(event):
@@ -142,8 +150,7 @@ def find_station():
         tk.messagebox.showwarning("Warning", "Please enter a valid station ID.")
 
 current_zoom = 1.0
-# Constants to define the min and max zoom levels
-MIN_ZOOM_LEVEL = 1.0
+MIN_ZOOM_LEVEL = 1.0  # Constants to define the min and max zoom levels
 MAX_ZOOM_LEVEL = 7.0  # Adjust as needed
 def zoom(event):
     global current_zoom
@@ -183,7 +190,6 @@ def end_pan(event):
 canvas.bind("<ButtonPress-3>", start_pan)
 canvas.bind("<B3-Motion>", do_pan)
 canvas.bind("<ButtonRelease-3>", end_pan)
-
 
 def save_configuration_as():
     filename = tk.filedialog.asksaveasfilename(
@@ -239,18 +245,24 @@ def draw_from_loaded_data():
 
     # Draw the cities
     for i, (cx, cy, cradius) in enumerate(city_centers):
-        canvas.create_text(cx, cy - 18, text=chr(65 + i), font=("Arial", 14, "bold"), fill='red', tags=("city","zoomable"))
-        canvas.create_image(cx, cy, image=city_icon_tk, tags=("city","zoomable"))
-        canvas.create_oval(cx - cradius, cy - cradius, cx + cradius, cy + cradius, outline='red', width=3, tags=("city","zoomable"))
-        city_tree.insert("", tk.END, values=(chr(65 + i), round(cx), round(cy), round(cradius * meters_per_pixel)))
-
+        draw_city(cx, cy, cradius, i)
     # Draw the base stations
     for station in base_stations:
-        idx, x, y, radius, position = station['id'], station['x'], station['y'], station['radius'],station["position"]
-        color = 'black' if position == 'IN' else 'blue'
-        canvas.create_oval(x - radius, y - radius, x + radius, y + radius, outline=color, width=2, tags=("base_station", "zoomable"))
-        canvas.create_text(x, y - 10, text=str(idx), font=("Arial", 10), fill='black', tags=("base_station", "zoomable"))
-        tree.insert("", tk.END, values=(idx, round(x), round(y), round(station["radius"] * meters_per_pixel), position))
+        draw_base_station(station)
+
+def draw_city(cx, cy, cradius, city_index):
+    canvas.create_text(cx, cy - 18, text=chr(65 + city_index), font=("Arial", 14, "bold"), fill='red', tags=("city","zoomable"))
+    canvas.create_image(cx, cy, image=city_icon_tk, tags=("city","zoomable"))
+    canvas.create_oval(cx - cradius, cy - cradius, cx + cradius, cy + cradius, outline='red', width=3, tags=("city","zoomable"))
+    city_tree.insert("", tk.END, values=(chr(65 + city_index), round(cx), round(cy), round(cradius * METERS_PER_PIXEL)))
+
+def draw_base_station(station):
+    idx, x, y, radius, position = station.values()
+    color = 'black' if position == 'IN' else 'blue'
+    canvas.create_oval(x - 1, y - 1, x + 1, y + 1, fill=color, tags=("base_station", "zoomable"))
+    canvas.create_oval(x - radius, y - radius, x + radius, y + radius, outline=color, width=2, tags=("base_station", "zoomable"))
+    canvas.create_text(x, y - 10, text=str(idx), font=("Arial", 10), fill='black', tags=("base_station", "zoomable"))
+    tree.insert("", tk.END, values=(idx, round(x), round(y), round(radius * METERS_PER_PIXEL), position))
 
 def draw_random_points():
     #Draws random base stations and cities on the canvas based on user parameters.
@@ -259,6 +271,12 @@ def draw_random_points():
     clear_highlight()
     base_stations.clear()
 
+    global current_zoom
+    if current_zoom != 1.0:
+        reset_scale = 1.0 / current_zoom  # Calculate the inverse of the current zoom to reset it
+        canvas.scale("zoomable", 0, 0, reset_scale, reset_scale)
+        current_zoom = 1.0
+
     global METERS_PER_PIXEL
     PIXELS_PER_METER = get_scale_value()
     METERS_PER_PIXEL = 1 / PIXELS_PER_METER
@@ -266,12 +284,6 @@ def draw_random_points():
     # Convert input parameters from meters to pixels
     min_city_radius_pixels = round(min_city_radius_var.get() * PIXELS_PER_METER*1000)
     max_city_radius_pixels = round(max_city_radius_var.get() * PIXELS_PER_METER*1000)
-
-    global current_zoom
-    if current_zoom != 1.0:
-        reset_scale = 1.0 / current_zoom    # Calculate the inverse of the current zoom to reset it
-        canvas.scale("zoomable", 0, 0, reset_scale, reset_scale)
-        current_zoom = 1.0
 
     # Gathering and preparing city parameters
     min_cities = int(min_cities_var.get())
@@ -288,8 +300,7 @@ def draw_random_points():
 
     # Checking if cities should be retained or drawn a new
     if not keep_cities_var.get() or not city_centers:
-        canvas.delete("city")  # Also delete existing cities if they were drawn previously
-        city_centers.clear()
+        city_centers.clear()  # Also delete existing cities if they were drawn previously
 
         # Drawing the cities
         for _ in range(num_cities):
@@ -333,13 +344,10 @@ def draw_random_points():
                 distance_from_center = cradius * random.random()
                 x = cx + distance_from_center * math.cos(angle)
                 y = cy + distance_from_center * math.sin(angle)
-
                 # Ensure this base station doesn't overlap with other base stations
                 if not are_points_within_range(x, y, existing_points, 0, inside_multiplier_var.get() * circle_radius_in_city_pixels):
                     existing_points.append((x, y))
                     base_stations.append({"id": len(base_stations), "x": x, "y": y, "radius": circle_radius_in_city_pixels, "position": "IN"})
-                    canvas.create_oval(x-1, y-1, x+1, y+1, fill='black', tags=("base_station", "zoomable"))
-                    canvas.create_oval(x - circle_radius_in_city_pixels, y - circle_radius_in_city_pixels, x + circle_radius_in_city_pixels, y + circle_radius_in_city_pixels, outline='black', width=2, tags=("base_station", "zoomable"))
                     break
                 tries += 1
 
@@ -354,31 +362,24 @@ def draw_random_points():
             # Randomly choose a position for the base station
             x = random.randint(10 + circle_radius_outside_pixels, 10 + SQUARE_SIZE - circle_radius_outside_pixels)
             y = random.randint(10 + circle_radius_outside_pixels, 10 + SQUARE_SIZE - circle_radius_outside_pixels)
-
             # Ensure this base station doesn't overlap with cities or other base stations
             if not any(are_points_within_range(x, y, [(cx, cy)], cr) for cx, cy, cr in city_centers) and not are_points_within_range(x, y, existing_points, 0, outside_multiplier_var.get() * circle_radius_outside_pixels):
                 existing_points.append((x, y))
                 base_stations.append({"id": len(base_stations), "x": x, "y": y, "radius": circle_radius_outside_pixels, "position": "OUT"})
-                canvas.create_oval(x-1, y-1, x+1, y+1, fill='blue', tags=("base_station", "zoomable"))
-                canvas.create_oval(x - circle_radius_outside_pixels, y - circle_radius_outside_pixels, x + circle_radius_outside_pixels, y + circle_radius_outside_pixels, outline='blue', width=2, tags=("base_station", "zoomable"))
                 break
             tries += 1
 
-    # Redraw the cities on the canvas
+    # Draw cities and base stations
     for i, (cx, cy, cradius) in enumerate(city_centers):
-        canvas.create_text(cx, cy - 18, text=chr(65 + i), font=("Arial", 14, "bold"), fill='red', tags=("city","zoomable"))
-        canvas.create_image(cx, cy, image=city_icon_tk, tags=("city","zoomable"))
-        canvas.create_oval(cx - cradius, cy - cradius, cx + cradius, cy + cradius, outline='red', width=3, tags=("city","zoomable"))
+        draw_city(cx, cy, cradius, i)
+    for station in base_stations:
+        draw_base_station(station)
 
     # Clearing previous records in the table
     for i in tree.get_children():
             tree.delete(i)
-
     for item in selected_tree.get_children():
         selected_tree.delete(item)
-
-    for idx, (x, y) in enumerate(existing_points):
-        canvas.create_text(x, y - 10, text=str(idx), font=("Arial", 10), fill='black', tags=("base_station","zoomable"))
 
     for station in base_stations:
         x = station["x"]
@@ -409,7 +410,6 @@ percentage_outside_var = tk.IntVar(value=10)
 percentage_in_city_var.trace("w", update_outside_city)
 keep_cities_var = tk.BooleanVar()
 
-
 scale_frame = tk.LabelFrame(root, text="Map Scale", padx=5, pady=5)
 scale_frame.grid_rowconfigure(0, weight=1);scale_frame.grid_rowconfigure(1, weight=1);scale_frame.grid_columnconfigure(0, weight=1)
 scale_frame.grid(row=0, column=1, padx=5, pady=5, sticky="new")
@@ -419,23 +419,17 @@ scale_label = tk.Label(scale_frame, textvariable=scale_var, font=("Arial", 12))
 scale_label.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
 
 # Dropdown menu for scale selection
-scale_options = {
-    '77500m': 775 / 77500,
-    '155000m': 775 / 155000,
-    '38750m': 775 / 38750
-}
 scale_selection_var = tk.StringVar(value='77500m')
-
 def get_scale_value():
     selected_scale = scale_selection_var.get()
-    return scale_options[selected_scale]
+    return SCALE_OPTIONS[selected_scale]
 def on_scale_select(event):
     selected_scale = scale_selection_var.get()
     global meters_per_pixel
-    meters_per_pixel = 1/scale_options[selected_scale]
+    meters_per_pixel = 1/SCALE_OPTIONS[selected_scale]
     scale_var.set(f"Scale:\n {selected_scale} * {selected_scale}\nMeters per pixel: {meters_per_pixel}")
 
-scale_menu = ttk.Combobox(scale_frame, textvariable=scale_selection_var, values=list(scale_options.keys()), state="readonly")
+scale_menu = ttk.Combobox(scale_frame, textvariable=scale_selection_var, values=list(SCALE_OPTIONS.keys()), state="readonly")
 scale_menu.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
 scale_menu.bind('<<ComboboxSelected>>', on_scale_select)
 
@@ -567,17 +561,17 @@ controls_frame = tk.LabelFrame(root, text="Controls", padx=5, pady=5)
 
 controls_frame.grid_rowconfigure(0, weight=1);controls_frame.grid_rowconfigure(1, weight=1);controls_frame.grid_rowconfigure(2, weight=1);controls_frame.grid_columnconfigure(0, weight=1)
 controls_frame.grid(row=2, column=1, padx=5, pady=5, sticky="news")
-clear_highlight_btn = tk.Button(controls_frame, text="Clear Selected BTS", command=clear_highlight)
+clear_highlight_btn = tk.Button(controls_frame, text="Clear Selected BTS", command=clear_highlight,bd=3)
 clear_highlight_btn.grid(row=1, column=0, pady=5, padx=5,sticky="news")
 tk.Checkbutton(controls_frame, text="Keep cities on map", variable=keep_cities_var).grid(row=0, column=0, pady=5, padx=5,sticky="news")
 tk.Button(controls_frame, text="\n          Apply          \n", command=draw_random_points, activebackground='blue', activeforeground='white', relief='raised', bd=5).grid(row=2, column=0, pady=5, padx=5,sticky="ew")
 
 file_frame = tk.LabelFrame(root, text="File Configuration", padx=5, pady=5)
-file_frame.grid(row=2, column=3, padx=5, pady=5)
-save_button = tk.Button(file_frame, text="Save Configuration", command=save_configuration_as)
-save_button.grid(row=0, column=0, pady=5, padx=5,sticky="ew")
-load_button = tk.Button(file_frame, text="Load Configuration", command=load_configuration)
-load_button.grid(row=1, column=0, pady=5, padx=5,sticky="ew")
+file_frame.grid(row=2, column=3, padx=5, pady=5, sticky="nw")
+save_button = tk.Button(file_frame, text="\nSave Configuration\n", command=save_configuration_as, activebackground='blue', activeforeground='white', relief='raised', bd=3)
+save_button.grid(row=0, column=0, pady=5, padx=5,sticky="news")
+load_button = tk.Button(file_frame, text="\nLoad Configuration\n", command=load_configuration, activebackground='blue', activeforeground='white', relief='raised', bd=3)
+load_button.grid(row=1, column=0, pady=5, padx=5,sticky="news")
 
 draw_random_points()
 root.mainloop()
