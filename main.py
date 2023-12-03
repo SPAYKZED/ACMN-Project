@@ -4,17 +4,22 @@ from PIL import Image, ImageTk
 import random
 import math
 import json
+import customtkinter as ctk
+from RangeSlider.RangeSlider import RangeSliderH
+from scipy.spatial import Delaunay
+import openpyxl
+from openpyxl import Workbook
 
 # Constants
-SQUARE_SIZE = 775
+SQUARE_SIZE = 1000
 IMG_PATH = "C:\\Python\\Project_ACMN\\"
 MAP_BG_FILENAME = "map_bg.png"
 STATION_IMG_FILENAME = 'station.png'
 CITY_IMG_FILENAME = "city1.png"
 SCALE_OPTIONS = {
-    '77500m': 775 / 77500,
-    '155000m': 775 / 155000,
-    '38750m': 775 / 38750
+    '100000m': 1000 / 100000,
+    '200000m': 1000 / 200000,
+    '50000m': 1000 / 50000
 }
 
 # Data
@@ -22,44 +27,31 @@ city_centers = []
 base_stations = []
 
 # Initialize Tkinter root
-root = tk.Tk()
+ctk.set_appearance_mode("Light")  # Set theme ("System", "Dark", "Light")
+ctk.set_default_color_theme("blue")  # Set color theme
+
+root = ctk.CTk()
 root.title("Adjacent Cells in Mobile Networks")
+root.state('zoomed')
 screen_width = root.winfo_screenwidth()
 screen_height = root.winfo_screenheight()
-root.geometry(f"{screen_width}x{screen_height}")
-canvas = tk.Canvas(root, bg='white', width=795, height=795)
-canvas.grid(row=0, column=0, rowspan=22)
-
-# Load and resize images
-img = Image.open(IMG_PATH + MAP_BG_FILENAME).resize((SQUARE_SIZE, SQUARE_SIZE))
-img_tk = ImageTk.PhotoImage(img)
 ph_station = tk.PhotoImage(file=IMG_PATH + STATION_IMG_FILENAME)
 root.iconphoto(False, ph_station)
+
+root.geometry(f"{screen_width}x{screen_height}")
+canvas = tk.Canvas(root, bg='white', width=995, height=995)
+
+canvas.grid(row=0, column=0, rowspan=22, sticky="n")
+
+# Load and resize images
+img = Image.open(IMG_PATH + MAP_BG_FILENAME).resize((980, 980))
+img_tk = ImageTk.PhotoImage(img)
+root.iconbitmap(default=IMG_PATH + STATION_IMG_FILENAME)
 city_icon = Image.open(IMG_PATH + CITY_IMG_FILENAME).resize((30, 30))
 city_icon_tk = ImageTk.PhotoImage(city_icon)
 
-canvas.create_rectangle(5, 5, 790, 790, fill='white', width=5, tags="static")
+canvas.create_rectangle(5, 5, 995,995 , fill='white', width=5, tags="static")
 canvas.create_image(10, 10, anchor=tk.NW, image=img_tk, tags="static")
-
-def update_outside_city(*args):
-    ''' Updating the percentage of stations outside of the city.'''
-    try:
-        inside_val = percentage_in_city_var.get()
-        if not 0 <= inside_val <= 100:
-            percentage_in_city_var.set(min(max(0, inside_val), 100))
-            return
-        outside_val = 100 - inside_val
-        percentage_outside_var.set(outside_val)
-    except:
-        pass
-
-def update_scales(min_scale, max_scale):
-    min_val = min_scale.get()
-    max_val = max_scale.get()
-    if min_val > max_val:
-        min_scale.set(max_val)
-    elif max_val < min_val:
-        max_scale.set(min_val)
 
 def are_points_within_range(x, y, points, min_distance, max_distance=None):
     '''This function checks if a given point (x, y) is within a certain distance range of any points from the list.'''
@@ -236,6 +228,7 @@ def draw_from_loaded_data():
     # Clear the canvas first
     canvas.delete("city")
     canvas.delete("base_station")
+    canvas.delete("triangulation")
     clear_highlight()
 
     for i in tree.get_children():
@@ -268,6 +261,7 @@ def draw_random_points():
     #Draws random base stations and cities on the canvas based on user parameters.
     canvas.delete("base_station")
     canvas.delete("city")
+    canvas.delete("triangulation")
     clear_highlight()
     base_stations.clear()
 
@@ -394,11 +388,65 @@ def draw_random_points():
     for i, (cx, cy, cradius) in enumerate(city_centers):
         city_tree.insert("", tk.END, values=(chr(65 + i), round(cx), round(cy), round(cradius*METERS_PER_PIXEL)))
 
+def perform_delaunay_triangulation():
+    canvas.delete("triangulation")
+    neighbors_table.delete(*neighbors_table.get_children())
+
+    max_distance = connection_distance_var.get()
+    points = [(station["x"], station["y"]) for station in base_stations]
+    tri = Delaunay(points)
+
+    global station_neighbors
+    station_neighbors = {i: set() for i in range(len(base_stations))}
+
+    for simplex in tri.simplices:
+        for i in range(3):
+            start_index, end_index = simplex[i], simplex[(i + 1) % 3]
+            start_point, end_point = points[start_index], points[end_index]
+            if distance(start_point, end_point) < max_distance:
+                canvas.create_line(start_point, end_point, fill='black', tags=("triangulation", "zoomable"))
+
+                station_neighbors[start_index].add(end_index)
+                station_neighbors[end_index].add(start_index)
+
+    for station_id, neighbors in station_neighbors.items():
+        neighbors_formatted = ', '.join(
+            str(n) for n in sorted(neighbors))
+        neighbors_table.insert("", 'end', values=(station_id, neighbors_formatted))
+
+def clear_triangulation():
+    canvas.delete("triangulation")
+def distance(point1, point2):
+    return ((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2) ** 0.5
+
+
+def create_excel_file():
+    filename = filedialog.asksaveasfilename(
+        defaultextension=".xlsx",
+        filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+        title="Save as..."
+    )
+    if not filename:
+        return
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Stations and Neighbors"
+    ws.append(['Station ID', 'Neighbors'])
+
+    for station_id, neighbors in station_neighbors.items():
+        neighbors_formatted = ', '.join(str(n) for n in neighbors)
+        ws.append([station_id, neighbors_formatted])
+
+    wb.save(filename)
+    tk.messagebox.showinfo('Export to Excel', f'Data exported successfully to {filename}')
+
+
+connection_distance_var = tk.DoubleVar(value=1000)
 num_points_var = tk.IntVar(value=100)
-min_radius_in_city_var = tk.IntVar(value=25)
-max_radius_in_city_var = tk.IntVar(value=25)
-min_radius_outside_var = tk.IntVar(value=5)
-max_radius_outside_var = tk.IntVar(value=5)
+min_radius_in_city_var = tk.IntVar(value=20)
+max_radius_in_city_var = tk.IntVar(value=30)
+min_radius_outside_var = tk.IntVar(value=2)
+max_radius_outside_var = tk.IntVar(value=7)
 min_cities_var = tk.IntVar(value=2)
 max_cities_var = tk.IntVar(value=5)
 inside_multiplier_var = tk.DoubleVar(value=1.4)
@@ -407,36 +455,83 @@ max_city_radius_var = tk.IntVar(value=15)
 outside_multiplier_var = tk.DoubleVar(value=1.4)
 percentage_in_city_var = tk.IntVar(value=90)
 percentage_outside_var = tk.IntVar(value=10)
-percentage_in_city_var.trace("w", update_outside_city)
 keep_cities_var = tk.BooleanVar()
 
-scale_frame = tk.LabelFrame(root, text="Map Scale", padx=5, pady=5)
-scale_frame.grid_rowconfigure(0, weight=1);scale_frame.grid_rowconfigure(1, weight=1);scale_frame.grid_columnconfigure(0, weight=1)
-scale_frame.grid(row=0, column=1, padx=5, pady=5, sticky="new")
-# Label to display the current scale
-scale_var = tk.StringVar(value="Scale:\n 77500 * 77500\nMeters per pixel: 100.0")
-scale_label = tk.Label(scale_frame, textvariable=scale_var, font=("Arial", 12))
+scale_frame = ctk.CTkFrame(root, border_width=2, corner_radius=7,border_color="black")
+scale_var = tk.StringVar(value="Current Scale: 100000m | Select:")
+scale_label = ctk.CTkLabel(scale_frame, textvariable=scale_var, font=("Arial", 16))
 scale_label.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+scale_selection_var = tk.StringVar(value='100000m')
+scale_menu = ttk.Combobox(scale_frame, textvariable=scale_selection_var, values=list(SCALE_OPTIONS.keys()), state="readonly", font=("Arial", 16), width=10)
+scale_menu.grid(row=0, column=1, padx=15, pady=5, sticky="ew")
 
-# Dropdown menu for scale selection
-scale_selection_var = tk.StringVar(value='77500m')
 def get_scale_value():
     selected_scale = scale_selection_var.get()
     return SCALE_OPTIONS[selected_scale]
 def on_scale_select(event):
     selected_scale = scale_selection_var.get()
-    global meters_per_pixel
-    meters_per_pixel = 1/SCALE_OPTIONS[selected_scale]
-    scale_var.set(f"Scale:\n {selected_scale} * {selected_scale}\nMeters per pixel: {meters_per_pixel}")
-
-scale_menu = ttk.Combobox(scale_frame, textvariable=scale_selection_var, values=list(SCALE_OPTIONS.keys()), state="readonly")
-scale_menu.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
+    scale_var.set(f"Current Scale: {selected_scale} | Select:")
+    scale_label.focus()
 scale_menu.bind('<<ComboboxSelected>>', on_scale_select)
+scale_frame_window = canvas.create_window(screen_width - 310, screen_height - 160, window=scale_frame, anchor='nw')
 
-bts_info_frame = tk.LabelFrame(root, text="Info on all BTS", padx=5, pady=5)
-bts_info_frame.grid(row=0, column=3, rowspan=3, padx=5, pady=5, sticky="new")
+def update_scale_frame_position(event):
+    canvas_width = canvas.winfo_width()
+    canvas_height = canvas.winfo_height()
+    canvas.coords(scale_frame_window, canvas_width - scale_frame.winfo_reqwidth() - 10, canvas_height - scale_frame.winfo_reqheight() - 10)
+root.bind('<Configure>', update_scale_frame_position)
 
-tree = ttk.Treeview(bts_info_frame, height=5)
+
+configuration_frame = ctk.CTkFrame(root, border_width=3)
+configuration_frame.grid(row=0, column=1, padx=5, pady=7, sticky="news")
+ctk.CTkLabel(configuration_frame, text="CONFIGURATION FOR GENERATION:",fg_color="grey",corner_radius=5, font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, columnspan=3, sticky="ew")
+
+cities_frame = ctk.CTkFrame(configuration_frame, border_width=3)
+cities_frame.grid(row=1, column=1, padx=5, pady=5, sticky="new")
+
+ctk.CTkLabel(cities_frame, text="City Count Range",fg_color="grey",corner_radius=5, text_color="black",font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, column=0,padx=5, pady=5,sticky="nsew")
+cities_count_frame = ctk.CTkFrame(cities_frame,border_width=2)
+cities_count_frame.grid(row=1, column=0, padx=15, pady=5, sticky="nsew")
+ctk.CTkLabel(cities_count_frame, text="MIN COUNT:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+ctk.CTkEntry(cities_count_frame, textvariable=min_cities_var, width=35,corner_radius=5).grid(row=0, column=1, padx=5, pady=5)
+ctk.CTkLabel(cities_count_frame, text="MAX COUNT:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+ctk.CTkEntry(cities_count_frame, textvariable=max_cities_var, width=35,corner_radius=5).grid(row=1, column=1, padx=5, pady=5)
+
+ctk.CTkLabel(cities_frame, text="City Radius Range",fg_color="grey",corner_radius=5, text_color="black",font=ctk.CTkFont(size=12, weight="bold")).grid(row=2, column=0,padx=5, pady=5,sticky="nsew")
+city_radius_frame = ctk.CTkFrame(cities_frame, border_width=2)
+city_radius_frame.grid(row=3, column=0, padx=15, pady=5, sticky="nsew")
+ctk.CTkLabel(city_radius_frame, text="MIN [ Km ]:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+ctk.CTkEntry(city_radius_frame, textvariable=min_city_radius_var, width=35,corner_radius=5).grid(row=0, column=1, sticky="w", padx=5, pady=5)
+ctk.CTkLabel(city_radius_frame, text="MAX [ Km ]:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+ctk.CTkEntry(city_radius_frame, textvariable=max_city_radius_var, width=35,corner_radius=5).grid(row=1, column=1, sticky="w", padx=5, pady=5)
+
+ctk.CTkLabel(cities_frame, text="City Information",fg_color="grey",corner_radius=5, text_color="black",font=ctk.CTkFont(size=12, weight="bold")).grid(row=4, columnspan=1, sticky="nsew")
+city_info_frame = ctk.CTkFrame(cities_frame)
+city_info_frame.grid(row=5, column=0, padx=5, pady=5, sticky="ewn")
+city_tree = ttk.Treeview(city_info_frame, height=2)
+city_tree["columns"] = ("ID", "X", "Y", "Radius")
+city_tree.column("#0", width=0, stretch=tk.NO)
+city_tree.column("ID", anchor=tk.W, width=40)
+city_tree.column("X", anchor=tk.W, width=40)
+city_tree.column("Y", anchor=tk.W, width=40)
+city_tree.column("Radius", anchor=tk.W, width=55)
+city_tree.heading("#0", text="", anchor=tk.W)
+city_tree.heading("ID", text="ID", anchor=tk.W)
+city_tree.heading("X", text="X", anchor=tk.W)
+city_tree.heading("Y", text="Y", anchor=tk.W)
+city_tree.heading("Radius", text="Radius", anchor=tk.W)
+city_tree.grid(row=0, column=0, columnspan=3, padx=5, pady=5, sticky='new')
+
+
+bts_info_frame = ctk.CTkFrame(root, border_width=3)
+bts_info_frame.grid(row=0, column=2, padx=5, pady=7, sticky="news")
+
+ctk.CTkLabel(bts_info_frame, text="Info about generated BTS:",fg_color="grey",corner_radius=5, font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, columnspan=3, sticky="ew")
+
+bts_table_frame = ctk.CTkFrame(bts_info_frame,border_width=2)
+bts_table_frame.grid(row=1, column=0,  padx=5, pady=5, sticky="nw")
+
+tree = ttk.Treeview(bts_table_frame, height=5)
 tree["columns"] = ("ID", "X", "Y", "Radius", "Position")
 tree.column("#0", width=0, stretch=tk.NO)
 tree.column("ID", anchor=tk.W, width=30)
@@ -452,23 +547,105 @@ tree.heading("Radius", text="Radius", anchor=tk.W)
 tree.heading("Position", text="Position", anchor=tk.W)
 tree.grid(row=1, column=0, columnspan=3, padx=10, pady=13, sticky='ew')
 
-bts_info_scrollbar = tk.Scrollbar(bts_info_frame, orient="vertical", command=tree.yview)
+bts_info_scrollbar = tk.Scrollbar(bts_table_frame, orient="vertical", command=tree.yview)
 bts_info_scrollbar.grid(row=1, column=4, sticky='ns')
 tree.configure(yscrollcommand=bts_info_scrollbar.set)
 
-selected_bts_info_frame = tk.LabelFrame(root, text="Selected BTS Info", padx=5, pady=5)
-selected_bts_info_frame.grid(row=2, column=2, padx=5, pady=5, sticky="nsew")
+# # create CTk scrollbar
+# bts_info_scrollbar = ctk.CTkScrollbar(bts_info_frame, command=tree.yview)
+# bts_info_scrollbar.grid(row=1, column=4, sticky='ns')
+# tree.configure(yscrollcommand=bts_info_scrollbar.set)
+
+stations_frame = ctk.CTkFrame(configuration_frame, border_width=3)
+stations_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
+
+stations_count_frame = ctk.CTkFrame(stations_frame)
+stations_count_frame.grid(row=0, columnspan=2, padx=5, pady=5, sticky="news")
+
+ctk.CTkLabel(stations_count_frame, text="STATION COUNT:", font=ctk.CTkFont(size=15, weight="bold")).grid(row=0, column=0, padx=5, pady=5,sticky="ew")
+ctk.CTkEntry(stations_count_frame, textvariable=num_points_var).grid(row=0, column=1, padx=5, pady=5,sticky="ew")
+
+in_city_frame = ctk.CTkFrame(stations_frame, border_width=2)
+in_city_frame.grid(row=1, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
+ctk.CTkLabel(in_city_frame, text="Radius range for IN-city stations:",fg_color="grey",corner_radius=5, font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, columnspan=3, sticky="ew")
+radius_in_city_frame = ctk.CTkFrame(in_city_frame)
+radius_in_city_frame.grid(row=1, columnspan=3, padx=5, pady=5, sticky="ew")
+
+ctk.CTkLabel(radius_in_city_frame, text="MIN:\n[ *100 m ]").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+radius_in_city_scale = RangeSliderH(radius_in_city_frame, [min_radius_in_city_var, max_radius_in_city_var],padX=11, min_val=1, max_val=30, step_size=1, Width=200, Height=60, bar_radius=7, bgColor="#DBDBDB")
+radius_in_city_scale.grid(row=0, column=1, pady=5, sticky="ew")
+ctk.CTkLabel(radius_in_city_frame, text="MAX:\n[ *100m ]").grid(row=0, column=2, sticky="e", padx=5, pady=5)
+
+in_city_multiplier_frame = ctk.CTkFrame(in_city_frame, border_width=2)
+in_city_multiplier_frame.grid(row=4, columnspan=3, padx=5,pady=5)
+
+ctk.CTkLabel(in_city_frame, text="Station Radius Overlapping:", fg_color="grey",corner_radius=5,font=ctk.CTkFont(size=12, weight="bold")).grid(row=3,columnspan=3, sticky="ew")
+ctk.CTkLabel(in_city_multiplier_frame, text="MIN").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+outside_multiplier_slider = ctk.CTkSlider(in_city_multiplier_frame, from_=2, to=1, variable=inside_multiplier_var, number_of_steps=20, width=150, height=10, border_width=3)
+outside_multiplier_slider.grid(row=0, column=1, pady=5, sticky="ew")
+ctk.CTkLabel(in_city_multiplier_frame, text="MAX").grid(row=0, column=2, sticky="e", padx=5, pady=5)
+
+outside_city_frame = ctk.CTkFrame(stations_frame, border_width=2)
+outside_city_frame.grid(row=2, column=0, columnspan=3, padx=10, pady=5, sticky="nsew")
+
+ctk.CTkLabel(outside_city_frame, text="Radius range for OUT-of-city stations:",fg_color="grey",corner_radius=5, font=ctk.CTkFont(size=12, weight="bold")).grid(row=0,columnspan=3, sticky="ew")
+radius_frame = ctk.CTkFrame(outside_city_frame)
+radius_frame.grid(row=1, columnspan=3, padx=5, pady=5, sticky="ew")
+ctk.CTkLabel(radius_frame, text="MIN:\n[ Km ]").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+radius_outside_city_scale = RangeSliderH(radius_frame, [min_radius_outside_var, max_radius_outside_var], padX=11, min_val=1, max_val=20, step_size=1, Width=250, Height=60, bar_radius=7, bgColor="#DBDBDB")
+radius_outside_city_scale.grid(row=0, column=1, pady=5, sticky="ew")
+ctk.CTkLabel(radius_frame, text="MAX:\n[ Km ]").grid(row=0, column=2, sticky="e", padx=5, pady=5)
+
+multiplier_frame = ctk.CTkFrame(outside_city_frame, border_width=2)
+multiplier_frame.grid(row=4, columnspan=3, padx=5,pady=5)
+
+ctk.CTkLabel(outside_city_frame, text="Station Radius Overlapping:", fg_color="grey",corner_radius=5,font=ctk.CTkFont(size=12, weight="bold")).grid(row=3,columnspan=3, sticky="ew")
+ctk.CTkLabel(multiplier_frame, text="MIN").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+outside_multiplier_slider = ctk.CTkSlider(multiplier_frame, from_=2, to=1, variable=outside_multiplier_var, number_of_steps=20, width=150, height=10, border_width=3)
+outside_multiplier_slider.grid(row=0, column=1, pady=5, sticky="ew")
+ctk.CTkLabel(multiplier_frame, text="MAX").grid(row=0, column=2, sticky="e", padx=5, pady=5)
+
+stations_percent_frame = ctk.CTkFrame(stations_frame, border_width=3)
+stations_percent_frame.grid(row=5, column=0, padx=10, pady=5, sticky="ew")
+
+ctk.CTkLabel(stations_percent_frame, text="Location percentages for BTS generation:",fg_color="grey",corner_radius=5, font=ctk.CTkFont(size=12, weight="bold")).grid(row=0,columnspan=2, sticky="news",padx=5, pady=5)
+ctk.CTkLabel(stations_percent_frame, text="INSIDE CITY [ % ]:", font=ctk.CTkFont(size=12, weight="bold")).grid(row=1, column=0, sticky="e", padx=5, pady=5)
+inside_city_slider = ctk.CTkSlider(stations_percent_frame, from_=0, to=100, variable=percentage_in_city_var, number_of_steps=100, width=150, height=10, border_width=3)
+inside_city_slider.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
+ctk.CTkLabel(stations_percent_frame, text="OUTSIDE CITY [ % ]:", font=ctk.CTkFont(size=12, weight="bold")).grid(row=2, column=0, sticky="e", padx=5, pady=5)
+outside_city_slider = ctk.CTkSlider(stations_percent_frame, from_=0, to=100, variable=percentage_outside_var, number_of_steps=100, width=150, height=10, border_width=3)
+outside_city_slider.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
+def update_outside_slider(*args):
+    outside_val = 100 - percentage_in_city_var.get()
+    percentage_outside_var.set(outside_val)
+def update_inside_slider(*args):
+    inside_val = 100 - percentage_outside_var.get()
+    percentage_in_city_var.set(inside_val)
+percentage_in_city_var.trace("w", update_outside_slider)
+percentage_outside_var.trace("w", update_inside_slider)
+
+selected_bts_info_frame = ctk.CTkFrame(bts_info_frame, border_width=3)
+selected_bts_info_frame.grid(row=5, column=0, padx=5, pady=5, sticky="news")
+
+
+controls_frame = ctk.CTkFrame(selected_bts_info_frame)
+controls_frame.grid(row=0, column=0, columnspan=3, padx=5, pady=5, sticky="news")
+
 station_id_entry_var = tk.StringVar()
-tk.Label(selected_bts_info_frame, text="  Station ID:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
-station_id_entry = tk.Entry(selected_bts_info_frame, textvariable=station_id_entry_var, width=7)
+ctk.CTkLabel(controls_frame, text="Station ID:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+station_id_entry = ctk.CTkEntry(controls_frame, textvariable=station_id_entry_var, width=50)
 station_id_entry.grid(row=0, column=1, padx=5, pady=5)
-find_button = tk.Button(selected_bts_info_frame, text="   Find    ", command=find_station)
+
+find_button = ctk.CTkButton(controls_frame, text="Find", command=find_station, width=30)
 find_button.grid(row=0, column=2, padx=5, pady=5)
 
-delete_button = tk.Button(selected_bts_info_frame, text="Delete BTS", command=delete_selected_station)
-delete_button.grid(row=2, column=1, padx=5, pady=5, sticky="nsew")
+delete_button = ctk.CTkButton(selected_bts_info_frame, text="Delete BTS", command=delete_selected_station)
+delete_button.grid(row=2, column=1, padx=5, pady=5, sticky="news")
 
-selected_tree = ttk.Treeview(selected_bts_info_frame, height=3)
+clear_highlight_btn = ctk.CTkButton(selected_bts_info_frame, text="Clear all Selected BTS", command=clear_highlight)
+clear_highlight_btn.grid(row=3, column=1, pady=10, padx=5,sticky="news")
+
+selected_tree = ttk.Treeview(selected_bts_info_frame, height=6)
 selected_tree["columns"] = ("ID", "X", "Y", "Radius", "Position")
 selected_tree.column("#0", width=0, stretch=tk.NO)
 selected_tree.column("ID", anchor=tk.W, width=30)
@@ -476,7 +653,6 @@ selected_tree.column("X", anchor=tk.W, width=30)
 selected_tree.column("Y", anchor=tk.W, width=30)
 selected_tree.column("Radius", anchor=tk.W, width=45)
 selected_tree.column("Position", anchor=tk.W, width=50)
-
 selected_tree.heading("#0", text="", anchor=tk.W)
 selected_tree.heading("ID", text="ID", anchor=tk.W)
 selected_tree.heading("X", text="X", anchor=tk.W)
@@ -485,93 +661,57 @@ selected_tree.heading("Radius", text="Radius", anchor=tk.W)
 selected_tree.heading("Position", text="Position", anchor=tk.W)
 selected_tree.grid(row=1, column=0, columnspan=3, padx=10, pady=10, sticky='ew')
 
-stations_count_frame = tk.LabelFrame(root, text="Stations Count & Radius", padx=5, pady=5)
-stations_count_frame.grid(row=0, column=2, padx=5, pady=5, sticky="nsew")
-tk.Label(stations_count_frame, text="COUNT:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
-tk.Entry(stations_count_frame, textvariable=num_points_var).grid(row=0, column=1, padx=5, pady=5)
-in_city_frame = tk.LabelFrame(stations_count_frame, text="In City", padx=5, pady=5)
-in_city_frame.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
-outside_city_frame = tk.LabelFrame(stations_count_frame, text="Outside City", padx=5, pady=5)
-outside_city_frame.grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+controls_frame = ctk.CTkFrame(configuration_frame,border_width=3)
+controls_frame.grid(row=1, column=1, pady=5, padx=5, sticky="ews")
+ctk.CTkCheckBox(controls_frame, text="Keep cities on map", variable=keep_cities_var).grid(row=0, column=0, pady=5, padx=10,sticky="news")
 
-tk.Label(in_city_frame, text="MIN RADIUS:\n[ *100 m ]").grid(row=0, column=0, sticky="e", padx=5, pady=5)
-min_radius_in_city_scale = tk.Scale(in_city_frame, from_=1, to=30, orient=tk.HORIZONTAL, variable=min_radius_in_city_var, command=lambda x: update_scales(min_radius_in_city_scale, max_radius_in_city_scale))
-min_radius_in_city_scale.grid(row=0, column=1, padx=5, pady=5)
-tk.Label(in_city_frame, text="MAX RADIUS:\n[ *100m ]").grid(row=1, column=0, sticky="e", padx=5, pady=5)
-max_radius_in_city_scale = tk.Scale(in_city_frame, from_=1, to=30, orient=tk.HORIZONTAL, variable=max_radius_in_city_var, command=lambda x: update_scales(min_radius_in_city_scale, max_radius_in_city_scale))
-max_radius_in_city_scale.grid(row=1, column=1, padx=5, pady=5)
 
-inside_multiplier_label = tk.Label(in_city_frame, text="Multiplier:")
-inside_multiplier_label.grid(row=2, column=0, sticky="e", padx=5, pady=5)
-inside_multiplier_spinbox = tk.Spinbox(in_city_frame, from_=1, to=2, width=3, increment=0.1, textvariable=inside_multiplier_var)
-inside_multiplier_spinbox.grid(row=2, column=1, padx=5, pady=5)
+ctk.CTkButton(controls_frame, text="\n          Apply          \n", command=draw_random_points).grid(row=1, column=0,pady=5, padx=10,sticky="news")
 
-tk.Label(outside_city_frame, text="MIN RADIUS:\n[ Km ]").grid(row=0, column=0, sticky="e", padx=5, pady=5)
-min_radius_outside_city_scale = tk.Scale(outside_city_frame, from_=1, to=20, orient=tk.HORIZONTAL, variable=min_radius_outside_var, command=lambda x: update_scales(min_radius_outside_city_scale, max_radius_outside_city_scale))
-min_radius_outside_city_scale.grid(row=0, column=1, padx=5, pady=5)
-tk.Label(outside_city_frame, text="MAX RADIUS:\n[ Km ]").grid(row=1, column=0, sticky="e", padx=5, pady=5)
-max_radius_outside_city_scale = tk.Scale(outside_city_frame, from_=1, to=20, orient=tk.HORIZONTAL, variable=max_radius_outside_var, command=lambda x: update_scales(min_radius_outside_city_scale, max_radius_outside_city_scale))
-max_radius_outside_city_scale.grid(row=1, column=1, padx=5, pady=5)
-
-inside_multiplier_label = tk.Label(outside_city_frame, text="Multiplier:")
-inside_multiplier_label.grid(row=2, column=0, sticky="e", padx=5, pady=5)
-inside_multiplier_spinbox = tk.Spinbox(outside_city_frame, from_=1, to=2, width=3, increment=0.1, textvariable=outside_multiplier_var)
-inside_multiplier_spinbox.grid(row=2, column=1, padx=5, pady=5)
-
-stations_percent_frame = tk.LabelFrame(root, text="Stations Percentage", padx=5, pady=5)
-stations_percent_frame.grid(row=1, column=2, padx=5, pady=5, sticky="ew")
-tk.Label(stations_percent_frame, text="INSIDE CITY [ % ]:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
-spinbox_inside_city = tk.Spinbox(stations_percent_frame, from_=0, to=100, width=3, textvariable=percentage_in_city_var)
-spinbox_inside_city.grid(row=0, column=1, padx=5, pady=5, sticky="w")
-tk.Label(stations_percent_frame, text="OUTSIDE CITY [ % ]:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
-tk.Entry(stations_percent_frame, textvariable=percentage_outside_var, state='readonly', width=3).grid(row=1, column=1, padx=5, pady=5, sticky="w")
-
-cities_frame = tk.LabelFrame(root, text="Cities Count & Radius", padx=5, pady=5)
-cities_frame.grid(row=0, column=1, rowspan=2, padx=5, pady=5, sticky="s")
-cities_count_frame = tk.LabelFrame(cities_frame, text="Count Range", padx=5, pady=5)
-cities_count_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
-tk.Label(cities_count_frame, text="MIN COUNT:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
-tk.Entry(cities_count_frame, textvariable=min_cities_var, width=5).grid(row=0, column=1, padx=5, pady=5)
-tk.Label(cities_count_frame, text="MAX COUNT:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
-tk.Entry(cities_count_frame, textvariable=max_cities_var, width=5).grid(row=1, column=1, padx=5, pady=5)
-
-city_radius_frame = tk.LabelFrame(cities_frame, text="Radius Range", padx=5, pady=5)
-city_radius_frame.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
-tk.Label(city_radius_frame, text="MIN [ Km ]:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
-tk.Entry(city_radius_frame, textvariable=min_city_radius_var, width=5).grid(row=0, column=1, padx=5, pady=5)
-tk.Label(city_radius_frame, text="MAX [ Km ]:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
-tk.Entry(city_radius_frame, textvariable=max_city_radius_var, width=5).grid(row=1, column=1, padx=5, pady=5)
-
-city_info_frame = tk.LabelFrame(cities_frame, text="City information", padx=5, pady=5)
-city_info_frame.grid(row=2, column=0, padx=5, pady=5, sticky="n")
-city_tree = ttk.Treeview(city_info_frame, height=2)
-city_tree["columns"] = ("ID", "X", "Y", "Radius")
-city_tree.column("#0", width=0, stretch=tk.NO)
-city_tree.column("ID", anchor=tk.W, width=30)
-city_tree.column("X", anchor=tk.W, width=30)
-city_tree.column("Y", anchor=tk.W, width=30)
-city_tree.column("Radius", anchor=tk.W, width=45)
-city_tree.heading("#0", text="", anchor=tk.W)
-city_tree.heading("ID", text="ID", anchor=tk.W)
-city_tree.heading("X", text="X", anchor=tk.W)
-city_tree.heading("Y", text="Y", anchor=tk.W)
-city_tree.heading("Radius", text="Radius", anchor=tk.W)
-city_tree.grid(row=0, column=0, columnspan=3, padx=10, pady=13, sticky='nw')
-controls_frame = tk.LabelFrame(root, text="Controls", padx=5, pady=5)
-
-controls_frame.grid_rowconfigure(0, weight=1);controls_frame.grid_rowconfigure(1, weight=1);controls_frame.grid_rowconfigure(2, weight=1);controls_frame.grid_columnconfigure(0, weight=1)
-controls_frame.grid(row=2, column=1, padx=5, pady=5, sticky="news")
-clear_highlight_btn = tk.Button(controls_frame, text="Clear Selected BTS", command=clear_highlight,bd=3)
-clear_highlight_btn.grid(row=1, column=0, pady=5, padx=5,sticky="news")
-tk.Checkbutton(controls_frame, text="Keep cities on map", variable=keep_cities_var).grid(row=0, column=0, pady=5, padx=5,sticky="news")
-tk.Button(controls_frame, text="\n          Apply          \n", command=draw_random_points, activebackground='blue', activeforeground='white', relief='raised', bd=5).grid(row=2, column=0, pady=5, padx=5,sticky="ew")
-
-file_frame = tk.LabelFrame(root, text="File Configuration", padx=5, pady=5)
-file_frame.grid(row=2, column=3, padx=5, pady=5, sticky="nw")
-save_button = tk.Button(file_frame, text="\nSave Configuration\n", command=save_configuration_as, activebackground='blue', activeforeground='white', relief='raised', bd=3)
+file_frame = ctk.CTkFrame(bts_info_frame)
+file_frame.grid(row=3, column=0, padx=5, pady=5)
+save_button = ctk.CTkButton(file_frame, text="\n   Save Configuration   \n", command=save_configuration_as)
 save_button.grid(row=0, column=0, pady=5, padx=5,sticky="news")
-load_button = tk.Button(file_frame, text="\nLoad Configuration\n", command=load_configuration, activebackground='blue', activeforeground='white', relief='raised', bd=3)
+load_button = ctk.CTkButton(file_frame, text="\n   Load Configuration   \n", command=load_configuration)
 load_button.grid(row=1, column=0, pady=5, padx=5,sticky="news")
+
+processing_frame = ctk.CTkFrame(root, border_width=3)
+processing_frame.grid(row=1, column=1, padx=5, pady=5, sticky="news")
+
+ctk.CTkLabel(processing_frame, text="CONFIGURATION PROCESSING:",fg_color="grey",corner_radius=5, font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, columnspan=2, sticky="ew")
+
+delaunay_triangulation_frame = ctk.CTkFrame(processing_frame, border_width=3)
+delaunay_triangulation_frame.grid(row=1, column=0, padx=5, pady=5, sticky="news")
+ctk.CTkLabel(delaunay_triangulation_frame, text="Max Connection Distance:", fg_color="grey",corner_radius=5,font=ctk.CTkFont(size=12, weight="bold")).grid(row=1,column=0, sticky="ew")
+proc_slider_frame = ctk.CTkFrame(delaunay_triangulation_frame, border_width=2)
+proc_slider_frame.grid(row=2, columnspan=3, padx=5,pady=5)
+ctk.CTkLabel(proc_slider_frame, text="MIN").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+outside_multiplier_slider = ctk.CTkSlider(proc_slider_frame, from_=0, to=2000, variable=connection_distance_var, number_of_steps=50, width=150, height=10, border_width=3)
+outside_multiplier_slider.grid(row=0, column=1, pady=5, sticky="ew")
+ctk.CTkLabel(proc_slider_frame, text="MAX").grid(row=0, column=2, sticky="e", padx=5, pady=5)
+processing_control_frame = ctk.CTkFrame(delaunay_triangulation_frame,border_width=2)
+processing_control_frame.grid(row=3, column=0,  padx=5, pady=5, sticky="nw")
+triangulate_button = ctk.CTkButton(processing_control_frame, text="Triangulate", command=perform_delaunay_triangulation, width=100, height=30)
+triangulate_button.grid(row=0, column=0, padx=5, pady=5)
+clear_triangulation_button = ctk.CTkButton(processing_control_frame, text="Clear", command=clear_triangulation,width=100, height=30)
+clear_triangulation_button.grid(row=0, column=1, padx=5, pady=5)
+export_excel_button = ctk.CTkButton(processing_control_frame, text="Export to Excel", command=create_excel_file)
+export_excel_button.grid(row=1, columnspan=2, padx=5, pady=5, sticky="ew")
+triangulation_frame = ctk.CTkFrame(processing_frame, border_width=3)
+triangulation_frame.grid(row=1, column=1, padx=5, pady=5, sticky="news")
+ctk.CTkLabel(triangulation_frame, text="Station Neighbors:",fg_color="grey",corner_radius=5, font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, column=0, sticky="ew")
+processing_table_frame = ctk.CTkFrame(triangulation_frame,border_width=2)
+processing_table_frame.grid(row=1, column=0,  padx=5, pady=5, sticky="nw")
+
+neighbors_table = ttk.Treeview(processing_table_frame,height=6)
+neighbors_table['columns'] = ('Station ID', 'Neighbors')
+neighbors_table.column("#0", width=0, stretch=tk.NO)
+neighbors_table.column("Station ID", anchor=tk.CENTER, width=80)
+neighbors_table.column("Neighbors", anchor=tk.CENTER, width=200)
+neighbors_table.heading("#0", text='', anchor=tk.CENTER)
+neighbors_table.heading("Station ID", text="Station ID", anchor=tk.CENTER)
+neighbors_table.heading("Neighbors", text="Neighbors", anchor=tk.CENTER)
+neighbors_table.grid(row=1, column=1, padx=5, pady=5)
 
 draw_random_points()
 root.mainloop()
