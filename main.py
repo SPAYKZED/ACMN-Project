@@ -7,7 +7,6 @@ import json
 import customtkinter as ctk
 from RangeSlider.RangeSlider import RangeSliderH
 from scipy.spatial import Delaunay
-import openpyxl
 from openpyxl import Workbook
 
 # Constants
@@ -77,7 +76,8 @@ def highlight_station(idx):
     # Highlight the station on the canvas
     station = base_stations[idx]
     x, y, radius = station["x"], station["y"], station["radius"]
-    canvas.create_oval(x - radius, y - radius, x + radius, y + radius, outline='yellow', width=4, tags=("zoomable","highlight_{}".format(station["id"])))
+    if current_zoom == 1.0:
+        canvas.create_oval(x - radius, y - radius, x + radius, y + radius, outline='yellow', width=4, tags=("zoomable","highlight_{}".format(station["id"])))
     # Check and highlight in the main station list ('tree')
     for i in tree.get_children():
         if tree.item(i)['values'][0] == station["id"]:
@@ -135,6 +135,16 @@ def find_station():
         for idx, station in enumerate(base_stations):
             if station["id"] == station_id:
                 highlight_station(idx)
+                for i in triangulation_table.get_children():
+                    if triangulation_table.item(i)['values'][0] == station["id"]:
+                        triangulation_table.selection_set(i)  # This highlights the row in 'tree'
+                        triangulation_table.see(i)  # This ensures the row is visible in 'tree'
+                        break
+                for i in neighbors_table.get_children():
+                    if neighbors_table.item(i)['values'][0] == station["id"]:
+                        neighbors_table.selection_set(i)  # This highlights the row in 'tree'
+                        neighbors_table.see(i)  # This ensures the row is visible in 'tree'
+                        break
                 break
         else:
             tk.messagebox.showinfo("Information", "Station ID not found.")
@@ -229,6 +239,8 @@ def draw_from_loaded_data():
     canvas.delete("city")
     canvas.delete("base_station")
     canvas.delete("triangulation")
+    triangulation_table.delete(*triangulation_table.get_children())
+    clear_neighbors()
     clear_highlight()
 
     for i in tree.get_children():
@@ -262,6 +274,8 @@ def draw_random_points():
     canvas.delete("base_station")
     canvas.delete("city")
     canvas.delete("triangulation")
+    triangulation_table.delete(*triangulation_table.get_children())
+    clear_neighbors()
     clear_highlight()
     base_stations.clear()
 
@@ -272,6 +286,7 @@ def draw_random_points():
         current_zoom = 1.0
 
     global METERS_PER_PIXEL
+    global PIXELS_PER_METER
     PIXELS_PER_METER = get_scale_value()
     METERS_PER_PIXEL = 1 / PIXELS_PER_METER
 
@@ -390,9 +405,9 @@ def draw_random_points():
 
 def perform_delaunay_triangulation():
     canvas.delete("triangulation")
-    neighbors_table.delete(*neighbors_table.get_children())
+    triangulation_table.delete(*triangulation_table.get_children())
 
-    max_distance = connection_distance_var.get()
+    # Получение точек для триангуляции
     points = [(station["x"], station["y"]) for station in base_stations]
     tri = Delaunay(points)
 
@@ -402,23 +417,17 @@ def perform_delaunay_triangulation():
     for simplex in tri.simplices:
         for i in range(3):
             start_index, end_index = simplex[i], simplex[(i + 1) % 3]
-            start_point, end_point = points[start_index], points[end_index]
-            if distance(start_point, end_point) < max_distance:
-                canvas.create_line(start_point, end_point, fill='black', tags=("triangulation", "zoomable"))
+            canvas.create_line(points[start_index], points[end_index], fill='black', tags=("triangulation", "zoomable"))
 
-                station_neighbors[start_index].add(end_index)
-                station_neighbors[end_index].add(start_index)
+            station_neighbors[start_index].add(end_index)
+            station_neighbors[end_index].add(start_index)
 
     for station_id, neighbors in station_neighbors.items():
-        neighbors_formatted = ', '.join(
-            str(n) for n in sorted(neighbors))
-        neighbors_table.insert("", 'end', values=(station_id, neighbors_formatted))
+        neighbors_formatted = ', '.join(str(n) for n in sorted(neighbors))
+        triangulation_table.insert("", 'end', values=(station_id, neighbors_formatted))
 
 def clear_triangulation():
     canvas.delete("triangulation")
-def distance(point1, point2):
-    return ((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2) ** 0.5
-
 
 def create_excel_file():
     filename = filedialog.asksaveasfilename(
@@ -440,6 +449,101 @@ def create_excel_file():
     wb.save(filename)
     tk.messagebox.showinfo('Export to Excel', f'Data exported successfully to {filename}')
 
+
+def is_point_inside_circle(point, circle_center, circle_radius):
+    """Checks if a point is inside a circle defined by a center and radius."""
+    px, py = point
+    cx, cy = circle_center
+    return math.hypot(px - cx, py - cy) < circle_radius
+
+
+def is_station_between(p1, p2, stations):
+    """Checks if there are any stations on the line between two stations p1 and p2, considering their radii."""
+    x1, y1 = p1
+    x2, y2 = p2
+    line_vec = [x2 - x1, y2 - y1]
+    line_length = math.hypot(line_vec[0], line_vec[1])
+
+    for station in stations:
+        station_pos = (station['x'], station['y'])
+        if station_pos == p1 or station_pos == p2:
+            continue  # Ignore the endpoints of the line
+
+        # Projection of the station point on the line
+        station_vec = [station_pos[0] - x1, station_pos[1] - y1]
+        proj_length = (station_vec[0] * line_vec[0] + station_vec[1] * line_vec[1]) / line_length
+        proj = [proj_length * line_vec[0] / line_length, proj_length * line_vec[1] / line_length]
+
+        # Closest point on the line to the station
+        closest_point = (x1 + proj[0], y1 + proj[1])
+
+        if not (0 <= proj_length <= line_length):
+            continue  # If the projection is outside the segment, skip to the next station
+
+        # Check if the closest point on the line is within the station's radius
+        if is_point_inside_circle(closest_point, station_pos, station['radius']):
+            return True  # There is a station on the line that blocks the path
+
+    return False  # No stations are on the line
+def draw_real_connection(canvas, station1, station2, tag='real_connection'):
+    """Draws a line of connection between two stations."""
+    canvas.create_line(station1['x'], station1['y'], station2['x'], station2['y'], fill='#36d10c',width=2, tags=("neighbors", "zoomable"))
+
+def update_table_with_real_neighbors(neighbors_table, station_id, neighbors):
+    """Updates the table with information on the real neighbors of a station."""
+    neighbors_formatted = ', '.join(str(n) for n in sorted(neighbors))
+    neighbors_table.insert("", 'end', values=(station_id, neighbors_formatted))
+
+def find_real_neighbors(base_stations, station_neighbors, max_distance_inside_pixels, max_distance_outside_pixels, canvas, neighbors_table):
+    """Finds real neighbors for each base station and updates the visualization and table."""
+    real_neighbors = {station['id']: set() for station in base_stations}  # Use a set to avoid duplicate neighbors
+
+    for station in base_stations:
+        x1, y1, radius1 = station['x'], station['y'], station['radius']
+        for neighbor_id in station_neighbors[station['id']]:
+            neighbor = next((s for s in base_stations if s['id'] == neighbor_id), None)  # Find the neighbor by ID
+            if neighbor:  # Check if neighbor is found
+                x2, y2, radius2 = neighbor['x'], neighbor['y'], neighbor['radius']
+                distance = math.hypot(x2 - x1, y2 - y1)
+
+                # Determine max distance based on station position
+                max_distance = max_distance_inside_pixels if station['position'] == 'IN' and neighbor['position'] == 'IN' else max_distance_outside_pixels
+
+                # Check connection conditions
+                if distance <= max_distance and not is_station_between((x1, y1), (x2, y2), base_stations):
+                    real_neighbors[station['id']].add(neighbor_id)
+                    draw_real_connection(canvas, station, neighbor, tag='real_connection')
+
+    # Clear the table before inserting new values
+    neighbors_table.delete(*neighbors_table.get_children())
+
+    # Now update the table with the complete sets of neighbors
+    for station_id, neighbors in real_neighbors.items():
+        neighbors_formatted = ', '.join(str(n) for n in sorted(neighbors))
+        neighbors_table.insert("", 'end', values=(station_id, neighbors_formatted))
+
+    return real_neighbors
+
+def on_find_neighbors_button_click():
+    """Handles the click event of the button to find real neighbors."""
+    global PIXELS_PER_METER
+    try:
+        # Convert values from kilometers to pixels using the value of PIXELS_PER_METER
+        max_distance_inside_pixels = round(max_distance_inside.get() * PIXELS_PER_METER * 1000)
+        max_distance_outside_pixels = round(max_distance_outside.get() * PIXELS_PER_METER * 1000)
+        real_neighbors = find_real_neighbors(
+            base_stations, station_neighbors, max_distance_inside_pixels, max_distance_outside_pixels, canvas, neighbors_table
+        )
+        messagebox.showinfo("Information", "Real neighbors have been successfully found and displayed.")
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
+
+def clear_neighbors():
+    canvas.delete("neighbors")
+    neighbors_table.delete(*neighbors_table.get_children())
+
+max_distance_inside = tk.DoubleVar(value=5)
+max_distance_outside = tk.DoubleVar(value=15)
 
 connection_distance_var = tk.DoubleVar(value=1000)
 num_points_var = tk.IntVar(value=100)
@@ -483,7 +587,7 @@ root.bind('<Configure>', update_scale_frame_position)
 
 
 configuration_frame = ctk.CTkFrame(root, border_width=3)
-configuration_frame.grid(row=0, column=1, padx=5, pady=7, sticky="news")
+configuration_frame.grid(row=0, column=1, padx=5, pady=7, sticky="nw")
 ctk.CTkLabel(configuration_frame, text="CONFIGURATION FOR GENERATION:",fg_color="grey",corner_radius=5, font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, columnspan=3, sticky="ew")
 
 cities_frame = ctk.CTkFrame(configuration_frame, border_width=3)
@@ -523,8 +627,8 @@ city_tree.heading("Radius", text="Radius", anchor=tk.W)
 city_tree.grid(row=0, column=0, columnspan=3, padx=5, pady=5, sticky='new')
 
 
-bts_info_frame = ctk.CTkFrame(root, border_width=3)
-bts_info_frame.grid(row=0, column=2, padx=5, pady=7, sticky="news")
+bts_info_frame = ctk.CTkFrame(configuration_frame, border_width=3)
+bts_info_frame.grid(row=1, column=2, padx=5, pady=7, sticky="news")
 
 ctk.CTkLabel(bts_info_frame, text="Info about generated BTS:",fg_color="grey",corner_radius=5, font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, columnspan=3, sticky="ew")
 
@@ -551,11 +655,6 @@ bts_info_scrollbar = tk.Scrollbar(bts_table_frame, orient="vertical", command=tr
 bts_info_scrollbar.grid(row=1, column=4, sticky='ns')
 tree.configure(yscrollcommand=bts_info_scrollbar.set)
 
-# # create CTk scrollbar
-# bts_info_scrollbar = ctk.CTkScrollbar(bts_info_frame, command=tree.yview)
-# bts_info_scrollbar.grid(row=1, column=4, sticky='ns')
-# tree.configure(yscrollcommand=bts_info_scrollbar.set)
-
 stations_frame = ctk.CTkFrame(configuration_frame, border_width=3)
 stations_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
 
@@ -572,7 +671,7 @@ radius_in_city_frame = ctk.CTkFrame(in_city_frame)
 radius_in_city_frame.grid(row=1, columnspan=3, padx=5, pady=5, sticky="ew")
 
 ctk.CTkLabel(radius_in_city_frame, text="MIN:\n[ *100 m ]").grid(row=0, column=0, sticky="w", padx=5, pady=5)
-radius_in_city_scale = RangeSliderH(radius_in_city_frame, [min_radius_in_city_var, max_radius_in_city_var],padX=11, min_val=1, max_val=30, step_size=1, Width=200, Height=60, bar_radius=7, bgColor="#DBDBDB")
+radius_in_city_scale = RangeSliderH(radius_in_city_frame, [min_radius_in_city_var, max_radius_in_city_var],padX=11, min_val=1, max_val=30, step_size=1, Width=200, Height=60, bar_radius=7, bgColor="#CFCFCF")
 radius_in_city_scale.grid(row=0, column=1, pady=5, sticky="ew")
 ctk.CTkLabel(radius_in_city_frame, text="MAX:\n[ *100m ]").grid(row=0, column=2, sticky="e", padx=5, pady=5)
 
@@ -592,7 +691,7 @@ ctk.CTkLabel(outside_city_frame, text="Radius range for OUT-of-city stations:",f
 radius_frame = ctk.CTkFrame(outside_city_frame)
 radius_frame.grid(row=1, columnspan=3, padx=5, pady=5, sticky="ew")
 ctk.CTkLabel(radius_frame, text="MIN:\n[ Km ]").grid(row=0, column=0, sticky="w", padx=5, pady=5)
-radius_outside_city_scale = RangeSliderH(radius_frame, [min_radius_outside_var, max_radius_outside_var], padX=11, min_val=1, max_val=20, step_size=1, Width=250, Height=60, bar_radius=7, bgColor="#DBDBDB")
+radius_outside_city_scale = RangeSliderH(radius_frame, [min_radius_outside_var, max_radius_outside_var], padX=11, min_val=1, max_val=20, step_size=1, Width=250, Height=60, bar_radius=7, bgColor="#CFCFCF")
 radius_outside_city_scale.grid(row=0, column=1, pady=5, sticky="ew")
 ctk.CTkLabel(radius_frame, text="MAX:\n[ Km ]").grid(row=0, column=2, sticky="e", padx=5, pady=5)
 
@@ -607,20 +706,25 @@ ctk.CTkLabel(multiplier_frame, text="MAX").grid(row=0, column=2, sticky="e", pad
 
 stations_percent_frame = ctk.CTkFrame(stations_frame, border_width=3)
 stations_percent_frame.grid(row=5, column=0, padx=10, pady=5, sticky="ew")
-
+inside_percentage_string = tk.StringVar(value="INSIDE CITY [ 90 % ]")
+outside_percentage_string = tk.StringVar(value="OUTSIDE CITY [ 10 % ]")
 ctk.CTkLabel(stations_percent_frame, text="Location percentages for BTS generation:",fg_color="grey",corner_radius=5, font=ctk.CTkFont(size=12, weight="bold")).grid(row=0,columnspan=2, sticky="news",padx=5, pady=5)
-ctk.CTkLabel(stations_percent_frame, text="INSIDE CITY [ % ]:", font=ctk.CTkFont(size=12, weight="bold")).grid(row=1, column=0, sticky="e", padx=5, pady=5)
+ctk.CTkLabel(stations_percent_frame, textvariable=inside_percentage_string, font=ctk.CTkFont(size=12, weight="bold")).grid(row=1, column=0, sticky="e", padx=5, pady=5)
 inside_city_slider = ctk.CTkSlider(stations_percent_frame, from_=0, to=100, variable=percentage_in_city_var, number_of_steps=100, width=150, height=10, border_width=3)
 inside_city_slider.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
-ctk.CTkLabel(stations_percent_frame, text="OUTSIDE CITY [ % ]:", font=ctk.CTkFont(size=12, weight="bold")).grid(row=2, column=0, sticky="e", padx=5, pady=5)
+ctk.CTkLabel(stations_percent_frame, textvariable=outside_percentage_string, font=ctk.CTkFont(size=12, weight="bold")).grid(row=2, column=0, sticky="e", padx=5, pady=5)
 outside_city_slider = ctk.CTkSlider(stations_percent_frame, from_=0, to=100, variable=percentage_outside_var, number_of_steps=100, width=150, height=10, border_width=3)
 outside_city_slider.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
+
 def update_outside_slider(*args):
     outside_val = 100 - percentage_in_city_var.get()
     percentage_outside_var.set(outside_val)
+    outside_percentage_string.set(f"Outside sity [ {outside_val} % ]")
 def update_inside_slider(*args):
     inside_val = 100 - percentage_outside_var.get()
     percentage_in_city_var.set(inside_val)
+    inside_percentage_string.set(f"Inside sity [ {inside_val} % ]")
+
 percentage_in_city_var.trace("w", update_outside_slider)
 percentage_outside_var.trace("w", update_inside_slider)
 
@@ -645,7 +749,7 @@ delete_button.grid(row=2, column=1, padx=5, pady=5, sticky="news")
 clear_highlight_btn = ctk.CTkButton(selected_bts_info_frame, text="Clear all Selected BTS", command=clear_highlight)
 clear_highlight_btn.grid(row=3, column=1, pady=10, padx=5,sticky="news")
 
-selected_tree = ttk.Treeview(selected_bts_info_frame, height=6)
+selected_tree = ttk.Treeview(selected_bts_info_frame, height=3)
 selected_tree["columns"] = ("ID", "X", "Y", "Radius", "Position")
 selected_tree.column("#0", width=0, stretch=tk.NO)
 selected_tree.column("ID", anchor=tk.W, width=30)
@@ -664,8 +768,6 @@ selected_tree.grid(row=1, column=0, columnspan=3, padx=10, pady=10, sticky='ew')
 controls_frame = ctk.CTkFrame(configuration_frame,border_width=3)
 controls_frame.grid(row=1, column=1, pady=5, padx=5, sticky="ews")
 ctk.CTkCheckBox(controls_frame, text="Keep cities on map", variable=keep_cities_var).grid(row=0, column=0, pady=5, padx=10,sticky="news")
-
-
 ctk.CTkButton(controls_frame, text="\n          Apply          \n", command=draw_random_points).grid(row=1, column=0,pady=5, padx=10,sticky="news")
 
 file_frame = ctk.CTkFrame(bts_info_frame)
@@ -678,35 +780,64 @@ load_button.grid(row=1, column=0, pady=5, padx=5,sticky="news")
 processing_frame = ctk.CTkFrame(root, border_width=3)
 processing_frame.grid(row=1, column=1, padx=5, pady=5, sticky="news")
 
-ctk.CTkLabel(processing_frame, text="CONFIGURATION PROCESSING:",fg_color="grey",corner_radius=5, font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, columnspan=2, sticky="ew")
+ctk.CTkLabel(processing_frame, text="CONFIGURATION PROCESSING:",fg_color="grey",corner_radius=5, font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, columnspan=4, sticky="ew")
 
 delaunay_triangulation_frame = ctk.CTkFrame(processing_frame, border_width=3)
 delaunay_triangulation_frame.grid(row=1, column=0, padx=5, pady=5, sticky="news")
-ctk.CTkLabel(delaunay_triangulation_frame, text="Max Connection Distance:", fg_color="grey",corner_radius=5,font=ctk.CTkFont(size=12, weight="bold")).grid(row=1,column=0, sticky="ew")
-proc_slider_frame = ctk.CTkFrame(delaunay_triangulation_frame, border_width=2)
-proc_slider_frame.grid(row=2, columnspan=3, padx=5,pady=5)
-ctk.CTkLabel(proc_slider_frame, text="MIN").grid(row=0, column=0, sticky="w", padx=5, pady=5)
-outside_multiplier_slider = ctk.CTkSlider(proc_slider_frame, from_=0, to=2000, variable=connection_distance_var, number_of_steps=50, width=150, height=10, border_width=3)
-outside_multiplier_slider.grid(row=0, column=1, pady=5, sticky="ew")
-ctk.CTkLabel(proc_slider_frame, text="MAX").grid(row=0, column=2, sticky="e", padx=5, pady=5)
+
 processing_control_frame = ctk.CTkFrame(delaunay_triangulation_frame,border_width=2)
 processing_control_frame.grid(row=3, column=0,  padx=5, pady=5, sticky="nw")
-triangulate_button = ctk.CTkButton(processing_control_frame, text="Triangulate", command=perform_delaunay_triangulation, width=100, height=30)
+triangulate_button = ctk.CTkButton(processing_control_frame, text="Triangulate", command=perform_delaunay_triangulation, width=80, height=40)
 triangulate_button.grid(row=0, column=0, padx=5, pady=5)
-clear_triangulation_button = ctk.CTkButton(processing_control_frame, text="Clear", command=clear_triangulation,width=100, height=30)
-clear_triangulation_button.grid(row=0, column=1, padx=5, pady=5)
-export_excel_button = ctk.CTkButton(processing_control_frame, text="Export to Excel", command=create_excel_file)
-export_excel_button.grid(row=1, columnspan=2, padx=5, pady=5, sticky="ew")
+clear_triangulation_button = ctk.CTkButton(processing_control_frame, text="Clear", command=clear_triangulation,width=80, height=40)
+clear_triangulation_button.grid(row=1, column=0, padx=5, pady=5)
+export_excel_button = ctk.CTkButton(processing_control_frame, text="Export", command=create_excel_file,width=80, height=40)
+export_excel_button.grid(row=2, column=0, padx=5, pady=5, sticky="ew")
+
+
 triangulation_frame = ctk.CTkFrame(processing_frame, border_width=3)
 triangulation_frame.grid(row=1, column=1, padx=5, pady=5, sticky="news")
-ctk.CTkLabel(triangulation_frame, text="Station Neighbors:",fg_color="grey",corner_radius=5, font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, column=0, sticky="ew")
+ctk.CTkLabel(triangulation_frame, text="Delaunay Treangulation:",fg_color="grey",corner_radius=5, font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, column=0, sticky="ew")
 processing_table_frame = ctk.CTkFrame(triangulation_frame,border_width=2)
 processing_table_frame.grid(row=1, column=0,  padx=5, pady=5, sticky="nw")
+
+triangulation_table = ttk.Treeview(processing_table_frame,height=6)
+triangulation_table['columns'] = ('Station ID', 'Neighbors')
+triangulation_table.column("#0", width=0, stretch=tk.NO)
+triangulation_table.column("Station ID", anchor=tk.CENTER, width=60)
+triangulation_table.column("Neighbors", anchor=tk.CENTER, width=200)
+triangulation_table.heading("#0", text='', anchor=tk.CENTER)
+triangulation_table.heading("Station ID", text="Station ID", anchor=tk.CENTER)
+triangulation_table.heading("Neighbors", text="Neighbors", anchor=tk.CENTER)
+triangulation_table.grid(row=1, column=1, padx=5, pady=5)
+
+
+delaunay_triangulation_frame = ctk.CTkFrame(processing_frame, border_width=3)
+delaunay_triangulation_frame.grid(row=1, column=2, padx=5, pady=5, sticky="news")
+
+processing_control_frame = ctk.CTkFrame(delaunay_triangulation_frame,border_width=2)
+processing_control_frame.grid(row=0, column=0,  padx=5, pady=5, sticky="nw")
+ctk.CTkLabel(processing_control_frame, text="IN  [ Km ]:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+ctk.CTkEntry(processing_control_frame, textvariable=max_distance_inside, width=35,corner_radius=5).grid(row=0, column=1, sticky="w", padx=5, pady=5)
+ctk.CTkLabel(processing_control_frame, text="OUT [ Km ]:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+ctk.CTkEntry(processing_control_frame, textvariable=max_distance_outside, width=35,corner_radius=5).grid(row=1, column=1, sticky="w", padx=5, pady=5)
+
+triangulate_button = ctk.CTkButton(delaunay_triangulation_frame, text="Find", command=on_find_neighbors_button_click, width=100, height=30)
+triangulate_button.grid(row=2, column=0, padx=5, pady=5)
+triangulate_button = ctk.CTkButton(delaunay_triangulation_frame, text="Clear", command=clear_neighbors, width=100, height=30)
+triangulate_button.grid(row=3, column=0, padx=5, pady=5)
+
+
+triangulation_frame = ctk.CTkFrame(processing_frame, border_width=3)
+triangulation_frame.grid(row=1, column=3, padx=5, pady=5, sticky="news")
+ctk.CTkLabel(triangulation_frame, text="Station Neighbors:",fg_color="grey",corner_radius=5, font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, column=3, sticky="ew")
+processing_table_frame = ctk.CTkFrame(triangulation_frame,border_width=2)
+processing_table_frame.grid(row=1, column=3,  padx=5, pady=5, sticky="nw")
 
 neighbors_table = ttk.Treeview(processing_table_frame,height=6)
 neighbors_table['columns'] = ('Station ID', 'Neighbors')
 neighbors_table.column("#0", width=0, stretch=tk.NO)
-neighbors_table.column("Station ID", anchor=tk.CENTER, width=80)
+neighbors_table.column("Station ID", anchor=tk.CENTER, width=60)
 neighbors_table.column("Neighbors", anchor=tk.CENTER, width=200)
 neighbors_table.heading("#0", text='', anchor=tk.CENTER)
 neighbors_table.heading("Station ID", text="Station ID", anchor=tk.CENTER)
