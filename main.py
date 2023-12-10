@@ -13,7 +13,7 @@ from openpyxl import Workbook
 SQUARE_SIZE = 1000
 IMG_PATH = "C:\\Python\\Project_ACMN\\"
 MAP_BG_FILENAME = "map_bg.png"
-STATION_IMG_FILENAME = 'station.png'
+STATION_IMG_FILENAME = 'station.ico'
 CITY_IMG_FILENAME = "city1.png"
 SCALE_OPTIONS = {
     '100000m': 1000 / 100000,
@@ -30,12 +30,12 @@ ctk.set_appearance_mode("Light")  # Set theme ("System", "Dark", "Light")
 ctk.set_default_color_theme("blue")  # Set color theme
 
 root = ctk.CTk()
+root.iconbitmap(default=IMG_PATH + STATION_IMG_FILENAME)
+
 root.title("Adjacent Cells in Mobile Networks")
 root.state('zoomed')
 screen_width = root.winfo_screenwidth()
 screen_height = root.winfo_screenheight()
-ph_station = tk.PhotoImage(file=IMG_PATH + STATION_IMG_FILENAME)
-root.iconphoto(False, ph_station)
 
 root.geometry(f"{screen_width}x{screen_height}")
 canvas = tk.Canvas(root, bg='white', width=995, height=995)
@@ -45,7 +45,6 @@ canvas.grid(row=0, column=0, rowspan=22, sticky="n")
 # Load and resize images
 img = Image.open(IMG_PATH + MAP_BG_FILENAME).resize((980, 980))
 img_tk = ImageTk.PhotoImage(img)
-root.iconbitmap(default=IMG_PATH + STATION_IMG_FILENAME)
 city_icon = Image.open(IMG_PATH + CITY_IMG_FILENAME).resize((30, 30))
 city_icon_tk = ImageTk.PhotoImage(city_icon)
 
@@ -407,29 +406,29 @@ def perform_delaunay_triangulation():
     canvas.delete("triangulation")
     triangulation_table.delete(*triangulation_table.get_children())
 
-    # Получение точек для триангуляции
     points = [(station["x"], station["y"]) for station in base_stations]
     tri = Delaunay(points)
 
-    global station_neighbors
-    station_neighbors = {i: set() for i in range(len(base_stations))}
+    global triangulated_neighbors
+    triangulated_neighbors = {i: set() for i in range(len(base_stations))}
 
     for simplex in tri.simplices:
         for i in range(3):
             start_index, end_index = simplex[i], simplex[(i + 1) % 3]
             canvas.create_line(points[start_index], points[end_index], fill='black', tags=("triangulation", "zoomable"))
 
-            station_neighbors[start_index].add(end_index)
-            station_neighbors[end_index].add(start_index)
+            triangulated_neighbors[start_index].add(end_index)
+            triangulated_neighbors[end_index].add(start_index)
 
-    for station_id, neighbors in station_neighbors.items():
+    for station_id, neighbors in triangulated_neighbors.items():
         neighbors_formatted = ', '.join(str(n) for n in sorted(neighbors))
         triangulation_table.insert("", 'end', values=(station_id, neighbors_formatted))
 
 def clear_triangulation():
     canvas.delete("triangulation")
 
-def create_excel_file():
+
+def create_excel_file(triangulated_neighbors, real_neighbors):
     filename = filedialog.asksaveasfilename(
         defaultextension=".xlsx",
         filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
@@ -437,18 +436,27 @@ def create_excel_file():
     )
     if not filename:
         return
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Stations and Neighbors"
-    ws.append(['Station ID', 'Neighbors'])
 
-    for station_id, neighbors in station_neighbors.items():
+    wb = Workbook()
+
+    ws_triangulated = wb.create_sheet("Triangulated Neighbors")
+    ws_triangulated.append(['Station ID', 'Neighbors'])
+    for station_id, neighbors in triangulated_neighbors.items():
         neighbors_formatted = ', '.join(str(n) for n in neighbors)
-        ws.append([station_id, neighbors_formatted])
+        ws_triangulated.append([station_id, neighbors_formatted])
+
+    ws_real = wb.create_sheet("Real Neighbors")
+    ws_real.append(['Station ID', 'Neighbors'])
+    for station_id, neighbors in real_neighbors.items():
+        neighbors_formatted = ', '.join(str(n) for n in neighbors)
+        ws_real.append([station_id, neighbors_formatted])
 
     wb.save(filename)
     tk.messagebox.showinfo('Export to Excel', f'Data exported successfully to {filename}')
 
+
+def export_neighbors_to_excel():
+    create_excel_file(triangulated_neighbors, real_neighbors)
 
 def is_point_inside_circle(point, circle_center, circle_radius):
     """Checks if a point is inside a circle defined by a center and radius."""
@@ -496,6 +504,7 @@ def update_table_with_real_neighbors(neighbors_table, station_id, neighbors):
 
 def find_real_neighbors(base_stations, station_neighbors, max_distance_inside_pixels, max_distance_outside_pixels, canvas, neighbors_table):
     """Finds real neighbors for each base station and updates the visualization and table."""
+    global real_neighbors
     real_neighbors = {station['id']: set() for station in base_stations}  # Use a set to avoid duplicate neighbors
 
     for station in base_stations:
@@ -532,7 +541,7 @@ def on_find_neighbors_button_click():
         max_distance_inside_pixels = round(max_distance_inside.get() * PIXELS_PER_METER * 1000)
         max_distance_outside_pixels = round(max_distance_outside.get() * PIXELS_PER_METER * 1000)
         real_neighbors = find_real_neighbors(
-            base_stations, station_neighbors, max_distance_inside_pixels, max_distance_outside_pixels, canvas, neighbors_table
+            base_stations, triangulated_neighbors, max_distance_inside_pixels, max_distance_outside_pixels, canvas, neighbors_table
         )
         messagebox.showinfo("Information", "Real neighbors have been successfully found and displayed.")
     except Exception as e:
@@ -787,11 +796,11 @@ delaunay_triangulation_frame.grid(row=1, column=0, padx=5, pady=5, sticky="news"
 
 processing_control_frame = ctk.CTkFrame(delaunay_triangulation_frame,border_width=2)
 processing_control_frame.grid(row=3, column=0,  padx=5, pady=5, sticky="nw")
-triangulate_button = ctk.CTkButton(processing_control_frame, text="Triangulate", command=perform_delaunay_triangulation, width=80, height=40)
+triangulate_button = ctk.CTkButton(processing_control_frame, text="Triangulate", command=perform_delaunay_triangulation, width=80, height=45)
 triangulate_button.grid(row=0, column=0, padx=5, pady=5)
-clear_triangulation_button = ctk.CTkButton(processing_control_frame, text="Clear", command=clear_triangulation,width=80, height=40)
+clear_triangulation_button = ctk.CTkButton(processing_control_frame, text="Clear", command=clear_triangulation,width=80, height=45)
 clear_triangulation_button.grid(row=1, column=0, padx=5, pady=5)
-export_excel_button = ctk.CTkButton(processing_control_frame, text="Export", command=create_excel_file,width=80, height=40)
+export_excel_button = ctk.CTkButton(processing_control_frame, text="Export", command=export_neighbors_to_excel,width=80, height=45)
 export_excel_button.grid(row=2, column=0, padx=5, pady=5, sticky="ew")
 
 
@@ -822,9 +831,9 @@ ctk.CTkEntry(processing_control_frame, textvariable=max_distance_inside, width=3
 ctk.CTkLabel(processing_control_frame, text="OUT [ Km ]:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
 ctk.CTkEntry(processing_control_frame, textvariable=max_distance_outside, width=35,corner_radius=5).grid(row=1, column=1, sticky="w", padx=5, pady=5)
 
-triangulate_button = ctk.CTkButton(delaunay_triangulation_frame, text="Find", command=on_find_neighbors_button_click, width=100, height=30)
+triangulate_button = ctk.CTkButton(delaunay_triangulation_frame, text="Find", command=on_find_neighbors_button_click, width=110, height=30)
 triangulate_button.grid(row=2, column=0, padx=5, pady=5)
-triangulate_button = ctk.CTkButton(delaunay_triangulation_frame, text="Clear", command=clear_neighbors, width=100, height=30)
+triangulate_button = ctk.CTkButton(delaunay_triangulation_frame, text="Clear", command=clear_neighbors, width=110, height=30)
 triangulate_button.grid(row=3, column=0, padx=5, pady=5)
 
 
