@@ -427,7 +427,6 @@ def perform_delaunay_triangulation():
 def clear_triangulation():
     canvas.delete("triangulation")
 
-
 def create_excel_file(triangulated_neighbors, real_neighbors):
     filename = filedialog.asksaveasfilename(
         defaultextension=".xlsx",
@@ -438,6 +437,7 @@ def create_excel_file(triangulated_neighbors, real_neighbors):
         return
 
     wb = Workbook()
+    wb.remove(wb.active)
 
     ws_triangulated = wb.create_sheet("Triangulated Neighbors")
     ws_triangulated.append(['Station ID', 'Neighbors'])
@@ -458,103 +458,129 @@ def create_excel_file(triangulated_neighbors, real_neighbors):
 def export_neighbors_to_excel():
     create_excel_file(triangulated_neighbors, real_neighbors)
 
-def is_point_inside_circle(point, circle_center, circle_radius):
-    """Checks if a point is inside a circle defined by a center and radius."""
-    px, py = point
-    cx, cy = circle_center
-    return math.hypot(px - cx, py - cy) < circle_radius
 
-
-def is_station_between(p1, p2, stations):
-    """Checks if there are any stations on the line between two stations p1 and p2, considering their radii."""
-    x1, y1 = p1
-    x2, y2 = p2
-    line_vec = [x2 - x1, y2 - y1]
-    line_length = math.hypot(line_vec[0], line_vec[1])
-
-    for station in stations:
-        station_pos = (station['x'], station['y'])
-        if station_pos == p1 or station_pos == p2:
-            continue  # Ignore the endpoints of the line
-
-        # Projection of the station point on the line
-        station_vec = [station_pos[0] - x1, station_pos[1] - y1]
-        proj_length = (station_vec[0] * line_vec[0] + station_vec[1] * line_vec[1]) / line_length
-        proj = [proj_length * line_vec[0] / line_length, proj_length * line_vec[1] / line_length]
-
-        # Closest point on the line to the station
-        closest_point = (x1 + proj[0], y1 + proj[1])
-
-        if not (0 <= proj_length <= line_length):
-            continue  # If the projection is outside the segment, skip to the next station
-
-        # Check if the closest point on the line is within the station's radius
-        if is_point_inside_circle(closest_point, station_pos, station['radius']):
-            return True  # There is a station on the line that blocks the path
-
-    return False  # No stations are on the line
-def draw_real_connection(canvas, station1, station2, tag='real_connection'):
+def draw_real_connection(canvas, station1, station2):
     """Draws a line of connection between two stations."""
     canvas.create_line(station1['x'], station1['y'], station2['x'], station2['y'], fill='#36d10c',width=2, tags=("neighbors", "zoomable"))
+
+def is_clear_path_between_stations(station1, station2, other_stations):
+    """
+    Checks if there is a clear path between two stations, ensuring no other station's radius
+    intersects the line connecting these two stations.
+
+    :param station1: Dictionary with data of the first station (coordinates and radius).
+    :param station2: Dictionary with data of the second station (coordinates and radius).
+    :param other_stations: List of dictionaries with data of other stations.
+    :return: True if the path between stations is clear, False otherwise.
+    """
+    x1, y1 = station1['x'], station1['y']  # Coordinates of the first station
+    x2, y2 = station2['x'], station2['y']  # Coordinates of the second station
+
+    for station in other_stations:
+        if station == station1 or station == station2:
+            continue  # Skip the stations we are checking
+
+        # Coordinates and radius of the other station
+        sx, sy, sradius = station['x'], station['y'], station['radius']
+
+        # Check if the line intersects with the station's radius
+        if is_line_intersecting_circle((x1, y1), (x2, y2), (sx, sy), sradius):
+            return False  # Path is blocked
+
+    return True  # Path is clear
+
+def is_line_intersecting_circle(p1, p2, center, radius):
+    """
+    Determines if a line segment between two points intersects a circle of given radius.
+
+    :param p1: Coordinates of the first point of the line segment.
+    :param p2: Coordinates of the second point of the line segment.
+    :param center: Coordinates of the center of the circle.
+    :param radius: Radius of the circle.
+    :return: True if the line segment intersects the circle, False otherwise.
+    """
+    cx, cy = center  # Center of the circle
+    ax, ay = p1      # First point of the line segment
+    bx, by = p2      # Second point of the line segment
+
+    # Vector from p1 to p2
+    ab = (bx - ax, by - ay)
+    # Vector from p1 to circle center
+    ac = (cx - ax, cy - ay)
+    # Dot product of ab and ac
+    ab_dot_ac = ab[0] * ac[0] + ab[1] * ac[1]
+
+    # Finding the projection of the center onto the line (parameter t of the line equation)
+    t = ab_dot_ac / (ab[0] ** 2 + ab[1] ** 2)
+
+    # Finding the closest point on the line to the circle center
+    closest_x = ax + ab[0] * t
+    closest_y = ay + ab[1] * t
+
+    # Check if the closest point is within the line segment
+    if not (min(ax, bx) <= closest_x <= max(ax, bx) and min(ay, by) <= closest_y <= max(ay, by)):
+        return False
+
+    # Check if the distance from the closest point to the circle center is less than the radius
+    return math.hypot(closest_x - cx, closest_y - cy) < radius
+
+
 
 def update_table_with_real_neighbors(neighbors_table, station_id, neighbors):
     """Updates the table with information on the real neighbors of a station."""
     neighbors_formatted = ', '.join(str(n) for n in sorted(neighbors))
     neighbors_table.insert("", 'end', values=(station_id, neighbors_formatted))
 
-def find_real_neighbors(base_stations, station_neighbors, max_distance_inside_pixels, max_distance_outside_pixels, canvas, neighbors_table):
-    """Finds real neighbors for each base station and updates the visualization and table."""
+def find_real_neighbors(base_stations, station_neighbors, alpha, beta, canvas, neighbors_table):
     global real_neighbors
-    real_neighbors = {station['id']: set() for station in base_stations}  # Use a set to avoid duplicate neighbors
+    real_neighbors = {station['id']: set() for station in base_stations}
 
     for station in base_stations:
-        x1, y1, radius1 = station['x'], station['y'], station['radius']
+        x1, y1, radius1, position1 = station['x'], station['y'], station['radius'], station['position']
         for neighbor_id in station_neighbors[station['id']]:
-            neighbor = next((s for s in base_stations if s['id'] == neighbor_id), None)  # Find the neighbor by ID
-            if neighbor:  # Check if neighbor is found
-                x2, y2, radius2 = neighbor['x'], neighbor['y'], neighbor['radius']
+            neighbor = next((s for s in base_stations if s['id'] == neighbor_id), None)
+            if neighbor:
+                x2, y2, radius2, position2 = neighbor['x'], neighbor['y'], neighbor['radius'], neighbor['position']
+
+                # Calculate the distance between the two stations
                 distance = math.hypot(x2 - x1, y2 - y1)
 
-                # Determine max distance based on station position
-                max_distance = max_distance_inside_pixels if station['position'] == 'IN' and neighbor['position'] == 'IN' else max_distance_outside_pixels
+                # Determine the coefficient to use based on the positions of the stations
+                coefficient = alpha if position1 == 'IN' and position2 == 'IN' else beta
 
-                # Check connection conditions
-                if distance <= max_distance and not is_station_between((x1, y1), (x2, y2), base_stations):
+                # Check if the stations satisfy the condition based on coefficient and radius sum
+                # and if no other station is in between them
+                if (distance <= coefficient * (radius1 + radius2) and is_clear_path_between_stations(station, neighbor, base_stations)):
                     real_neighbors[station['id']].add(neighbor_id)
-                    draw_real_connection(canvas, station, neighbor, tag='real_connection')
+                    draw_real_connection(canvas, station, neighbor)
 
-    # Clear the table before inserting new values
-    neighbors_table.delete(*neighbors_table.get_children())
-
-    # Now update the table with the complete sets of neighbors
+    # Update the table with the real neighbors
     for station_id, neighbors in real_neighbors.items():
-        neighbors_formatted = ', '.join(str(n) for n in sorted(neighbors))
-        neighbors_table.insert("", 'end', values=(station_id, neighbors_formatted))
+        update_table_with_real_neighbors(neighbors_table, station_id, neighbors)
 
     return real_neighbors
 
+
 def on_find_neighbors_button_click():
     """Handles the click event of the button to find real neighbors."""
-    global PIXELS_PER_METER
     try:
-        # Convert values from kilometers to pixels using the value of PIXELS_PER_METER
-        max_distance_inside_pixels = round(max_distance_inside.get() * PIXELS_PER_METER * 1000)
-        max_distance_outside_pixels = round(max_distance_outside.get() * PIXELS_PER_METER * 1000)
-        real_neighbors = find_real_neighbors(
-            base_stations, triangulated_neighbors, max_distance_inside_pixels, max_distance_outside_pixels, canvas, neighbors_table
-        )
+        alpha = alpha_var.get()  # Adjust the alpha value as needed
+        beta = beta_var.get()  # Adjust the beta value as needed
+        real_neighbors = find_real_neighbors(base_stations, triangulated_neighbors, alpha, beta, canvas, neighbors_table)
         messagebox.showinfo("Information", "Real neighbors have been successfully found and displayed.")
     except Exception as e:
         messagebox.showerror("Error", str(e))
+
+
+
 
 def clear_neighbors():
     canvas.delete("neighbors")
     neighbors_table.delete(*neighbors_table.get_children())
 
-max_distance_inside = tk.DoubleVar(value=5)
-max_distance_outside = tk.DoubleVar(value=15)
+alpha_var = tk.DoubleVar(value=1.2)
+beta_var = tk.DoubleVar(value=1.2)
 
-connection_distance_var = tk.DoubleVar(value=1000)
 num_points_var = tk.IntVar(value=100)
 min_radius_in_city_var = tk.IntVar(value=20)
 max_radius_in_city_var = tk.IntVar(value=30)
@@ -810,7 +836,7 @@ ctk.CTkLabel(triangulation_frame, text="Delaunay Treangulation:",fg_color="grey"
 processing_table_frame = ctk.CTkFrame(triangulation_frame,border_width=2)
 processing_table_frame.grid(row=1, column=0,  padx=5, pady=5, sticky="nw")
 
-triangulation_table = ttk.Treeview(processing_table_frame,height=6)
+triangulation_table = ttk.Treeview(processing_table_frame,height=7)
 triangulation_table['columns'] = ('Station ID', 'Neighbors')
 triangulation_table.column("#0", width=0, stretch=tk.NO)
 triangulation_table.column("Station ID", anchor=tk.CENTER, width=60)
@@ -825,15 +851,15 @@ delaunay_triangulation_frame = ctk.CTkFrame(processing_frame, border_width=3)
 delaunay_triangulation_frame.grid(row=1, column=2, padx=5, pady=5, sticky="news")
 
 processing_control_frame = ctk.CTkFrame(delaunay_triangulation_frame,border_width=2)
-processing_control_frame.grid(row=0, column=0,  padx=5, pady=5, sticky="nw")
-ctk.CTkLabel(processing_control_frame, text="IN  [ Km ]:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
-ctk.CTkEntry(processing_control_frame, textvariable=max_distance_inside, width=35,corner_radius=5).grid(row=0, column=1, sticky="w", padx=5, pady=5)
-ctk.CTkLabel(processing_control_frame, text="OUT [ Km ]:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
-ctk.CTkEntry(processing_control_frame, textvariable=max_distance_outside, width=35,corner_radius=5).grid(row=1, column=1, sticky="w", padx=5, pady=5)
+processing_control_frame.grid(row=0, column=0,  padx=5, pady=5, sticky="nwe")
+ctk.CTkLabel(processing_control_frame, text="   [ IN ] coef :").grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+ctk.CTkEntry(processing_control_frame, textvariable=alpha_var, width=35,corner_radius=5).grid(row=0, column=1, sticky="e", padx=5, pady=5)
+ctk.CTkLabel(processing_control_frame, text="[ OUT ] coef :").grid(row=1, column=0, sticky="ew", padx=5, pady=5)
+ctk.CTkEntry(processing_control_frame, textvariable=beta_var, width=35,corner_radius=5).grid(row=1, column=1, sticky="e", padx=5, pady=5)
 
-triangulate_button = ctk.CTkButton(delaunay_triangulation_frame, text="Find", command=on_find_neighbors_button_click, width=110, height=30)
+triangulate_button = ctk.CTkButton(delaunay_triangulation_frame, text="Find", command=on_find_neighbors_button_click, width=110, height=35)
 triangulate_button.grid(row=2, column=0, padx=5, pady=5)
-triangulate_button = ctk.CTkButton(delaunay_triangulation_frame, text="Clear", command=clear_neighbors, width=110, height=30)
+triangulate_button = ctk.CTkButton(delaunay_triangulation_frame, text="Clear", command=clear_neighbors, width=110, height=35)
 triangulate_button.grid(row=3, column=0, padx=5, pady=5)
 
 
@@ -843,7 +869,7 @@ ctk.CTkLabel(triangulation_frame, text="Station Neighbors:",fg_color="grey",corn
 processing_table_frame = ctk.CTkFrame(triangulation_frame,border_width=2)
 processing_table_frame.grid(row=1, column=3,  padx=5, pady=5, sticky="nw")
 
-neighbors_table = ttk.Treeview(processing_table_frame,height=6)
+neighbors_table = ttk.Treeview(processing_table_frame,height=7)
 neighbors_table['columns'] = ('Station ID', 'Neighbors')
 neighbors_table.column("#0", width=0, stretch=tk.NO)
 neighbors_table.column("Station ID", anchor=tk.CENTER, width=60)
